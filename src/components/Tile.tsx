@@ -9,12 +9,13 @@ interface Props {
   row: number
   col: number
   clearing: boolean
+  targeted: boolean
 }
 
-function TileView({ tile, row, col, clearing }: Props) {
+function TileView({ tile, row, col, clearing, targeted }: Props) {
   return (
     <div
-      className={`tile-pos${clearing ? ' clearing' : ''}`}
+      className={`tile-pos${clearing ? ' clearing' : ''}${targeted ? ' targeted' : ''}`}
       style={{ '--r': row, '--c': col } as React.CSSProperties}
     >
       <div className={`tile suit-${tile.suit}`} aria-label={`${tile.value}${SUIT_CHAR[tile.suit]}`}>

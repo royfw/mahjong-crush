@@ -157,8 +157,8 @@ function randomTile(rng: Rng): Tile {
  * Demo 友善的新牌：有機率參考同一行/列上的牌，
  * 產生「相同牌」或「同花色差 1~2」的牌，讓牌型更容易成形。
  */
-function assistedTile(board: Board, r: number, c: number, rng: Rng): Tile {
-  if (rng() >= ASSIST_RATE) return randomTile(rng)
+function assistedTile(board: Board, r: number, c: number, rng: Rng, assistRate: number): Tile {
+  if (rng() >= assistRate) return randomTile(rng)
   const near: Tile[] = []
   const all: Tile[] = []
   for (let i = 0; i < SIZE; i++)
@@ -178,7 +178,12 @@ function assistedTile(board: Board, r: number, c: number, rng: Rng): Tile {
 }
 
 /** 只在空格生成新牌 */
-export function spawnTiles(board: Board, count: number, rng: Rng = Math.random): { board: Board; spawnedIds: Set<string> } {
+export function spawnTiles(
+  board: Board,
+  count: number,
+  rng: Rng = Math.random,
+  assistRate = ASSIST_RATE,
+): { board: Board; spawnedIds: Set<string> } {
   const next = board.map((row) => row.slice())
   const empties: [number, number][] = []
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (!next[r][c]) empties.push([r, c])
@@ -189,7 +194,7 @@ export function spawnTiles(board: Board, count: number, rng: Rng = Math.random):
   }
   const spawnedIds = new Set<string>()
   for (const [r, c] of empties.slice(0, count)) {
-    const t = assistedTile(next, r, c, rng)
+    const t = assistedTile(next, r, c, rng, assistRate)
     next[r][c] = t
     spawnedIds.add(t.id)
   }
@@ -217,9 +222,29 @@ export function isFull(board: Board): boolean {
   return board.every((row) => row.every((t) => t !== null))
 }
 
-/** 沒有可消除牌型，且四個方向都推不動 → GAME OVER */
+/** 沒有可消除牌型，且四個方向都推不動 → 卡死（扣血） */
 export function checkGameOver(board: Board): boolean {
   if (findMatches(board).length) return false
   const dirs: Direction[] = ['up', 'down', 'left', 'right']
   return dirs.every((d) => !moveBoard(board, d).moved)
+}
+
+/** 移除指定格子（技能 / 受傷用） */
+export function removeCells(board: Board, cells: [number, number][]): { board: Board; removedIds: Set<string> } {
+  return removeMatches(board, [{ kind: 'pung', cells, base: 0 }])
+}
+
+export function randomFilledCells(board: Board, count: number, rng: Rng = Math.random): [number, number][] {
+  const filled: [number, number][] = []
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (board[r][c]) filled.push([r, c])
+  return filled.sort(() => rng() - 0.5).slice(0, count)
+}
+
+/** 連消：連續幾步都有消除 → 分數倍率（3 連 ×2、6 連 ×3 封頂） */
+export const STREAK_TIERS: { at: number; mult: number }[] = [
+  { at: 6, mult: 3 },
+  { at: 3, mult: 2 },
+]
+export function streakMultiplier(streak: number): number {
+  return STREAK_TIERS.find((t) => streak >= t.at)?.mult ?? 1
 }
