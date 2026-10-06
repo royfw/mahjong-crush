@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { leaderboardApi } from './server/leaderboard.ts'
+import { leaderboardApi } from './server/leaderboard.js'
 
 // https://vite.dev/config/
 export default defineConfig({

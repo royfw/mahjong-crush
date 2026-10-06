@@ -12,6 +12,7 @@
     "version": "changeset version"
   },
   "dependencies": {
+    "@upstash/redis": "^1.39.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

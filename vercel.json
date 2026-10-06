@@ -1,0 +1,4 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [{ "source": "/api/:route((?!handler$).*)", "destination": "/api/handler?__route=:route" }]
+}

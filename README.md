@@ -24,14 +24,22 @@ npm run build
 
 - 遊戲邏輯（純函式）：`src/game/logic.ts`、技能 / 關卡：`src/game/skills.ts`
 - 音效 / 震動：`src/game/feedback.ts`
-- 玩家識別與排行榜：`src/game/player.ts`（瀏覽器 fingerprint + 本機種子）、API：`server/leaderboard.ts`
+- 玩家識別與排行榜：`src/game/player.ts`（瀏覽器 fingerprint + 本機種子）、API：`server/`、`api/`
 - UI：`src/components/`（Game / Board / Tile / ScoreBoard / GameOver）
 - 難度調整：`logic.ts` 中的 `ASSIST_RATE`、`PUNG_ASSIST`、`THIRD_SPAWN_RATE`
 
 ## 排行榜 API
 
-以 Vite plugin 掛在 `npm run dev` / `npm run preview` 上，資料存在 `data/players.json`（已 gitignore）。
-純靜態部署（沒有 API）時自動切換為離線模式，遊戲照常可玩。
+邏輯集中在 `server/core.ts`，儲存層可替換：
+
+| 環境 | 入口 | 儲存 |
+|---|---|---|
+| 本機 `npm run dev` / `npm run preview` | Vite plugin（`server/leaderboard.ts`） | `data/players.json`（已 gitignore） |
+| Vercel | `api/handler.ts`（`vercel.json` 把 `/api/*` rewrite 過去） | Upstash Redis（`server/store-redis.ts`） |
+
+Vercel 需要在專案 **Storage** 加入 Upstash Redis，會自動注入 `KV_REST_API_URL` / `KV_REST_API_TOKEN`（`UPSTASH_REDIS_REST_*` 亦可）。
+沒有 API 時（例如純靜態部署）前端自動切換為離線模式，遊戲照常可玩。
+寫入操作有每 IP 每分鐘 30 次的頻率限制；分數只做範圍檢查，不防有心作弊。
 
 | Method | Path | 說明 |
 |---|---|---|
