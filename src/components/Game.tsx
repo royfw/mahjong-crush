@@ -34,6 +34,7 @@ import { GameOver } from './GameOver'
 import { LevelUp } from './LevelUp'
 import { PlayerBar } from './PlayerBar'
 import { PlayerModal } from './PlayerModal'
+import { InstallButton, PwaPrompt } from './Pwa'
 import { ScoreBoard } from './ScoreBoard'
 import { SkillBar } from './SkillBar'
 import { StatusBar } from './StatusBar'
@@ -117,7 +118,7 @@ export function Game() {
   const [stuck, setStuck] = useState(false)
   const [muted, setMutedState] = useState(isMuted)
   const [modal, setModal] = useState<'welcome' | 'board' | null>(null)
-  const [result, setResult] = useState<{ rank: number; total: number } | null>(null)
+  const [result, setResult] = useState<{ rank: number; total: number } | 'queued' | null>(null)
 
   const player = usePlayer()
   const submitRef = useRef(player.submit)
@@ -228,7 +229,9 @@ export function Game() {
       setResult(null)
       fx.gameOver()
       render()
-      void submitRef.current(st.score, st.level).then((r) => r && setResult({ rank: r.rank, total: r.total }))
+      void submitRef
+        .current(st.score, st.level)
+        .then((r) => r && setResult(r === 'queued' ? r : { rank: r.rank, total: r.total }))
       return
     }
     fx.damage()
@@ -597,6 +600,7 @@ export function Game() {
             </div>
             <div className="keys">
               <span className="keys-text">方向鍵 / WASD 移動，1–3 選技能</span>
+              <InstallButton />
               <button className="btn ghost" onClick={restart}>
                 重新開始
               </button>
@@ -605,6 +609,7 @@ export function Game() {
         </aside>
       </div>
       {choices && <LevelUp level={s.level} choices={choices} skills={s.skills} onPick={pickSkill} />}
+      <PwaPrompt />
       {modal && <PlayerModal key={modal + player.fp} p={player} mode={modal} onClose={() => setModal(null)} />}
     </>
   )

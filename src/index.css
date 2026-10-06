@@ -1,3 +1,25 @@
+/* 字型自帶（離線可用）：Noto Serif TC 只含介面用到的字與常用字，其餘字退回系統字型 */
+@font-face {
+  font-family: 'Noto Serif TC';
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/noto-serif-tc-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Noto Serif TC';
+  font-weight: 900;
+  font-display: swap;
+  src: url('/fonts/noto-serif-tc-900.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Bebas Neue';
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/bebas-neue.woff2') format('woff2');
+}
+
 :root {
   --bg: #0d0a14;
   --bg-2: #1a1024;
@@ -943,6 +965,15 @@ body {
   font-weight: 700;
 }
 
+.player-offline {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
 .player-rank {
   margin-left: auto;
   font-family: 'Bebas Neue', system-ui, sans-serif;
@@ -1251,6 +1282,39 @@ body {
   display: flex;
   justify-content: center;
   gap: 8px;
+}
+
+/* ── PWA ────────────────────────────── */
+.pwa-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 60;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  white-space: nowrap;
+  color: var(--text);
+  background: rgba(20, 13, 30, 0.95);
+  border: 1px solid var(--jade);
+  box-shadow: 0 0 20px rgba(62, 240, 176, 0.3);
+  animation: fadeIn 300ms ease-out;
+}
+
+.install-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  text-align: left;
+  line-height: 2;
+  font-size: 15px;
+}
+
+.install-steps b {
+  color: var(--gold);
 }
 
 /* ── Responsive（放最後，覆蓋上方基礎樣式）── */

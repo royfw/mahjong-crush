@@ -14,6 +14,15 @@
 - 棋盤卡死：有技能先用技能，沒有就扣 1 顆心並清掉 10 張牌；血量歸零才 GAME OVER
 - 音效（Web Audio 合成）與震動（Android；iOS Safari 不支援 Vibration API），右上角可關閉
 
+## 安裝到手機、離線玩
+
+這是一個 PWA：用手機瀏覽器開過一次後，整個遊戲（程式、字型、圖示）就會存在手機裡，之後沒有網路也能玩，例如在飛機上。
+
+- **iPhone**：用 Safari 開啟 → 分享 → 加入主畫面
+- **Android / 桌機 Chrome**：點遊戲下方的「安裝到主畫面」，或網址列的安裝圖示
+- 離線時分數會先存在手機，恢復連線後自動上傳到排行榜（只保留最高分）
+- 有新版本時畫面會提示「更新」，不會在遊戲中途自動重新整理
+
 ## 開發
 
 ```bash
@@ -24,6 +33,8 @@ npm run build
 
 - 遊戲邏輯（純函式）：`src/game/logic.ts`、技能 / 關卡：`src/game/skills.ts`
 - 音效 / 震動：`src/game/feedback.ts`
+- PWA（安裝提示、更新提示）：`src/components/Pwa.tsx`；設定在 `vite.config.ts` 的 `VitePWA`
+- 字型自帶於 `public/fonts/`：Noto Serif TC 只含介面用到的字與常用字（約 120 KB / 字重），其他字退回系統字型
 - 玩家識別與排行榜：`src/game/player.ts`（瀏覽器 fingerprint + 本機種子）、API：`server/`、`api/`
 - UI：`src/components/`（Game / Board / Tile / ScoreBoard / GameOver）
 - 難度調整：`logic.ts` 中的 `ASSIST_RATE`、`PUNG_ASSIST`、`THIRD_SPAWN_RATE`

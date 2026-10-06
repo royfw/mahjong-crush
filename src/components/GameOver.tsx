@@ -3,7 +3,7 @@ interface Props {
   best: number
   level: number
   isRecord: boolean
-  result: { rank: number; total: number } | null
+  result: { rank: number; total: number } | 'queued' | null
   onRestart: () => void
   onOpenBoard?: () => void
 }
@@ -23,7 +23,8 @@ export function GameOver({ score, best, level, isRecord, result, onRestart, onOp
         <div className="overlay-line">
           Best: <b>{best.toLocaleString()}</b>
         </div>
-        {result && (
+        {result === 'queued' && <div className="overlay-rank">離線中，分數會在連線後自動上傳</div>}
+        {result && result !== 'queued' && (
           <div className="overlay-rank">
             排行榜第 <b>{result.rank}</b> 名 / {result.total} 人
           </div>
