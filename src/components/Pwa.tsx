@@ -1,13 +1,42 @@
 import { useEffect, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
+const CHECK_INTERVAL_MS = 60 * 60 * 1000
+
+/**
+ * 定期檢查新版本：每小時一次，另外在切回 App 時也檢查（手機放背景時計時器會暫停）。
+ * 兩者共用節流，最多一小時檢查一次；離線時略過。
+ */
+function scheduleUpdateChecks(swUrl: string, registration: ServiceWorkerRegistration) {
+  let lastCheck = Date.now()
+  const check = async () => {
+    if (Date.now() - lastCheck < CHECK_INTERVAL_MS || registration.installing || !navigator.onLine) return
+    lastCheck = Date.now()
+    try {
+      // 先確認伺服器可連線，避免在不穩的網路下讓 update() 報錯
+      const res = await fetch(swUrl, { cache: 'no-store' })
+      if (res.ok) await registration.update()
+    } catch {
+      /* 網路不穩：下次再試 */
+    }
+  }
+  setInterval(check, CHECK_INTERVAL_MS)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void check()
+  })
+}
+
 /** 下載完成（可離線）與有新版本時的提示 */
 export function PwaPrompt() {
   const {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh],
     updateServiceWorker,
-  } = useRegisterSW()
+  } = useRegisterSW({
+    onRegisteredSW(swUrl, registration) {
+      if (registration) scheduleUpdateChecks(swUrl, registration)
+    },
+  })
 
   useEffect(() => {
     if (!offlineReady) return
