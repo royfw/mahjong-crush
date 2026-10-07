@@ -2,10 +2,14 @@
 
 export type Suit = 'wan' | 'tong' | 'tiao'
 
+// 特殊牌：被消掉時連帶觸發。plus 隨機多消 2 張｜row 整列｜col 整行｜blast 九宮格｜suit 全盤同花
+export type Power = 'plus' | 'row' | 'col' | 'blast' | 'suit'
+
 export interface Tile {
   id: string
   suit: Suit
   value: number
+  power?: Power
 }
 
 export type Cell = Tile | null
@@ -206,6 +210,7 @@ export function spawnTiles(
   const spawnedIds = new Set<string>()
   for (const [r, c] of empties.slice(0, count)) {
     const t = assistedTile(next, r, c, rng, assistRate)
+    if (rng() < POWER_SPAWN_RATE) t.power = rollPower(SPAWN_POWER_WEIGHTS, rng)
     next[r][c] = t
     spawnedIds.add(t.id)
   }
@@ -283,4 +288,112 @@ export const STREAK_TIERS: { at: number; mult: number }[] = [
 ]
 export function streakMultiplier(streak: number): number {
   return STREAK_TIERS.find((t) => streak >= t.at)?.mult ?? 1
+}
+
+// ── 特殊牌 ───────────────────────────────────────────
+
+export const POWER_SPAWN_RATE = 0.08 // 新牌是特殊牌的機率
+export const POWER_TILE_SCORE = 20 // 特殊牌連帶消掉的每張牌分數（再乘 Combo / 連消倍率）
+// 隨機出現：小效果常見、大效果少見
+const SPAWN_POWER_WEIGHTS: [Power, number][] = [
+  ['plus', 40],
+  ['row', 15],
+  ['col', 15],
+  ['blast', 20],
+  ['suit', 10],
+]
+// 大消除獎勵：偏向強的效果
+const EARNED_POWER_WEIGHTS: [Power, number][] = [
+  ['row', 30],
+  ['col', 30],
+  ['blast', 30],
+  ['suit', 10],
+]
+
+function rollPower(weights: [Power, number][], rng: Rng): Power {
+  let n = rng() * weights.reduce((a, [, w]) => a + w, 0)
+  for (const [p, w] of weights) if ((n -= w) < 0) return p
+  return weights[0][0]
+}
+
+/** 特殊牌觸發時影響的格子（只回傳有牌的格子） */
+function powerTargets(board: Board, power: Power, r: number, c: number, taken: Set<number>, rng: Rng): number[] {
+  const out: number[] = []
+  const add = (i: number, j: number) => {
+    if (i >= 0 && i < SIZE && j >= 0 && j < SIZE && board[i][j]) out.push(i * SIZE + j)
+  }
+  if (power === 'row') for (let j = 0; j < SIZE; j++) add(r, j)
+  else if (power === 'col') for (let i = 0; i < SIZE; i++) add(i, c)
+  else if (power === 'blast') for (let i = r - 1; i <= r + 1; i++) for (let j = c - 1; j <= c + 1; j++) add(i, j)
+  else if (power === 'suit') {
+    const suit = board[r][c]!.suit
+    for (let i = 0; i < SIZE; i++) for (let j = 0; j < SIZE; j++) if (board[i][j]?.suit === suit) add(i, j)
+  } else {
+    // plus：隨機多消 2 張還沒被消的牌
+    const rest: number[] = []
+    for (let i = 0; i < SIZE; i++)
+      for (let j = 0; j < SIZE; j++) if (board[i][j] && !taken.has(i * SIZE + j)) rest.push(i * SIZE + j)
+    for (let k = 0; k < 2 && rest.length; k++) out.push(rest.splice(Math.floor(rng() * rest.length), 1)[0])
+  }
+  return out
+}
+
+export interface PowerHit {
+  power: Power
+  r: number
+  c: number
+}
+
+/**
+ * 從要消的格子出發，觸發其中的特殊牌；被炸到的特殊牌也會接著觸發（連鎖引爆）。
+ * 回傳最終要消的格子、連帶多消的張數、觸發了哪些特殊牌。
+ */
+export function expandRemoval(
+  board: Board,
+  seeds: [number, number][],
+  rng: Rng = Math.random,
+): { cells: [number, number][]; extra: number; hits: PowerHit[] } {
+  const taken = new Set<number>()
+  for (const [r, c] of seeds) if (board[r][c]) taken.add(r * SIZE + c)
+  const base = taken.size
+  const queue = [...taken]
+  const fired = new Set<number>()
+  const hits: PowerHit[] = []
+  while (queue.length) {
+    const k = queue.shift()!
+    const r = Math.floor(k / SIZE)
+    const c = k % SIZE
+    const t = board[r][c]
+    if (!t?.power || fired.has(k)) continue
+    fired.add(k)
+    hits.push({ power: t.power, r, c })
+    for (const n of powerTargets(board, t.power, r, c, taken, rng)) {
+      if (taken.has(n)) continue
+      taken.add(n)
+      queue.push(n)
+    }
+  }
+  const cells = [...taken].map((k): [number, number] => [Math.floor(k / SIZE), k % SIZE])
+  return { cells, extra: taken.size - base, hits }
+}
+
+/** 大消除獎勵：把離 near 最近、還不是特殊牌的牌變成特殊牌 */
+export function grantPower(board: Board, near: [number, number], rng: Rng = Math.random): Board {
+  let best: [number, number] | null = null
+  let bestD = Infinity
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++) {
+      const t = board[r][c]
+      if (!t || t.power) continue
+      const d = Math.abs(r - near[0]) + Math.abs(c - near[1]) + rng() * 0.5 // 同距離時隨機
+      if (d < bestD) {
+        bestD = d
+        best = [r, c]
+      }
+    }
+  if (!best) return board
+  const next = board.map((row) => row.slice())
+  const [r, c] = best
+  next[r][c] = { ...next[r][c]!, power: rollPower(EARNED_POWER_WEIGHTS, rng) } // 保留 id：牌不重新掛載，只長出角標
+  return next
 }

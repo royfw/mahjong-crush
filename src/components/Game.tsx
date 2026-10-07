@@ -9,10 +9,14 @@ import {
   moveBoard,
   randomFilledCells,
   removeCells,
-  removeMatches,
   spawnTiles,
   streakMultiplier,
   trySwap,
+  expandRemoval,
+  grantPower,
+  countOverlaps,
+  POWER_TILE_SCORE,
+  type PowerHit,
   MELD_NAME,
   type Board as BoardData,
   type Direction,
@@ -66,6 +70,19 @@ const KEY_DIR: Record<string, Direction> = {
 }
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
+
+const POWER_ICON = { plus: '➕', row: '↔', col: '↕', blast: '💥', suit: '🎨' } as const
+const powerIcons = (hits: PowerHit[]) =>
+  hits.length ? [...new Set(hits.map((h) => POWER_ICON[h.power]))].join('') + ' ' : ''
+
+/** 有觸發特殊牌時播最強那種的音效，否則播一般消除音 */
+function playHits(hits: PowerHit[], chain: number) {
+  const ps = new Set(hits.map((h) => h.power))
+  if (ps.has('suit')) fx.sparkle()
+  else if (ps.has('blast')) fx.bomb()
+  else if (ps.has('row') || ps.has('col')) fx.sweep()
+  else fx.clear(chain)
+}
 
 function loadBest(): number {
   try {
@@ -353,6 +370,7 @@ export function Game() {
     let chain = 0
     let bonusGiven = false
     let cleared = false
+    let granted = false // 每步最多因大消除獲得 1 張特殊牌
     const prevStreak = g.current.streak
     commit(b)
     await sleep(SLIDE_MS)
@@ -374,16 +392,16 @@ export function Game() {
           }
         }
         const mult = streakMultiplier(g.current.streak)
-        const pts = calculateScore(matches, chain) * mult
-        const { board: removed, removedIds } = removeMatches(b, matches)
+        const seeds = matches.flatMap((m) => m.cells)
+        // 特殊牌：被消到就連帶觸發（可連鎖引爆）
+        const { cells, extra, hits } = expandRemoval(b, seeds)
+        const pts = (calculateScore(matches, chain) + extra * POWER_TILE_SCORE * chain) * mult
+        const { board: removed, removedIds } = removeCells(b, cells)
         // 只有一種牌型時顯示名稱，讓玩家知道是什麼被消掉（寬鬆牌型尤其需要）
         const kinds = new Set(matches.map((m) => m.kind))
         const label = kinds.size === 1 ? `${MELD_NAME[matches[0].kind]} ` : ''
-        addFloat(
-          matches.flatMap((m) => m.cells),
-          `${label}+${pts.toLocaleString()}${mult > 1 ? ` ×${mult}` : ''}`,
-        )
-        fx.clear(chain)
+        addFloat(seeds, `${powerIcons(hits)}${label}+${pts.toLocaleString()}${mult > 1 ? ` ×${mult}` : ''}`)
+        playHits(hits, chain)
         setClearing(removedIds)
         if (chain >= 2) setCombo({ n: chain, key: ++fxId.current })
         addScore(pts)
@@ -407,6 +425,11 @@ export function Game() {
         if (!alive()) return
         setClearing(new Set())
         b = collapseBoard(removed, collapseDir)
+        // 交叉消除或 Combo ×2 以上：在消除處附近生一張特殊牌
+        if (!granted && (countOverlaps(matches) > 0 || chain >= 2)) {
+          granted = true
+          b = grantPower(b, seeds[Math.floor(seeds.length / 2)])
+        }
         commit(b)
         await sleep(SLIDE_MS)
       }
@@ -450,9 +473,11 @@ export function Game() {
     setStuck(false)
 
     ;({ bomb: fx.bomb, shovel: fx.sweep, purge: fx.sparkle, heart: fx.sparkle })[id]()
-    const { board, removedIds } = removeCells(st.board, cells)
-    const pts = cells.length * SKILL_TILE_SCORE
-    addFloat(cells, `${SKILLS[id].icon} +${pts}`)
+    // 技能炸到特殊牌也會觸發
+    const ex = expandRemoval(st.board, cells)
+    const { board, removedIds } = removeCells(st.board, ex.cells)
+    const pts = cells.length * SKILL_TILE_SCORE + ex.extra * POWER_TILE_SCORE
+    addFloat(cells, `${SKILLS[id].icon}${powerIcons(ex.hits)} +${pts}`)
     setClearing(removedIds)
     addScore(pts)
     await sleep(CLEAR_MS)
@@ -690,7 +715,19 @@ export function Game() {
               </div>
             </div>
             <p className="rules-loose">
-              不同花也能消：同號 <b>+60</b>　雜順 <b>+50</b>　跳號 <b>+40</b>
+              不同花也能消：
+              <span>
+                同號 <b>+60</b>
+              </span>{' '}
+              <span>
+                雜順 <b>+50</b>
+              </span>{' '}
+              <span>
+                跳號 <b>+40</b>
+              </span>
+              <br />
+              特殊牌：<span>➕ 多消 2 張</span> <span>↔ 整列</span> <span>↕ 整行</span> <span>💥 九宮格</span>{' '}
+              <span>🎨 同花</span>
             </p>
             <div className="keys">
               <span className="keys-text">方向鍵推整盤，滑鼠拖牌換位，1–3 選技能</span>
