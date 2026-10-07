@@ -72,7 +72,7 @@ export const SKILL_ORDER: SkillId[] = ['bomb', 'shovel', 'purge', 'nimble', 'hea
 export const BASE_HP = 3
 export const DAMAGE_CLEAR = 10 // 卡死扣血時清掉的牌數
 
-// 換牌（Candy Crush 式）/ 擠壓 共用次數：推整盤 SWAP_RECHARGE 次回 1 次，過關補滿
+// 換牌 / 擠壓 共用次數：開局 0 次，推整盤 SWAP_RECHARGE 次存 1 次（上限 SWAP_MAX），過關送 1 次
 export const SWAP_MAX = 4
 export const SWAP_RECHARGE = 5
 

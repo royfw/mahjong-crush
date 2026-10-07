@@ -38,7 +38,6 @@ import {
   skillPlacement,
   type SkillId,
   type Skills,
-  SWAP_MAX,
   SWAP_RECHARGE,
   swapRules,
 } from '../game/skills'
@@ -137,7 +136,7 @@ function newGame(best: number): GameState {
     maxHp: BASE_HP,
     skills: {},
     streak: 0,
-    swaps: SWAP_MAX,
+    swaps: 0, // 開局是空的：靠推整盤慢慢存
     slidesToRecharge: SWAP_RECHARGE,
     movesLeft: levelConfig(1).moves,
     over: false,
@@ -356,7 +355,7 @@ export function Game() {
     }
     st.level += 1
     st.levelStart = st.score
-    st.swaps = swapRules(st.skills).max
+    st.swaps = Math.min(swapRules(st.skills).max, st.swaps + 1) // 過關送 1 次（不再補滿）
     st.movesLeft = levelConfig(st.level).moves
     showToast(`LEVEL ${st.level}`)
     fx.levelUp()
