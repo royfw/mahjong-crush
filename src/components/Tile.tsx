@@ -17,11 +17,15 @@ interface Props {
   row: number
   col: number
   clearing: boolean
+  armed?: boolean
 }
 
-function TileView({ tile, row, col, clearing }: Props) {
+function TileView({ tile, row, col, clearing, armed }: Props) {
   return (
-    <div className={`tile-pos${clearing ? ' clearing' : ''}`} style={{ '--r': row, '--c': col } as React.CSSProperties}>
+    <div
+      className={`tile-pos${clearing ? ' clearing' : ''}${armed ? ' armed' : ''}`}
+      style={{ '--r': row, '--c': col } as React.CSSProperties}
+    >
       <div
         className={`tile suit-${tile.suit}${tile.power ? ` has-power power-${tile.power}` : ''}`}
         aria-label={`${tile.value}${SUIT_CHAR[tile.suit]}${tile.power ? `（${POWER_INFO[tile.power].name}）` : ''}`}

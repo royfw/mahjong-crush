@@ -14,17 +14,19 @@ interface Props {
   clearing: Set<string>
   floats: FloatText[]
   shake: boolean
+  armed: string | null // 長按選起來的牌
   children?: React.ReactNode
   onPointerDown: (e: React.PointerEvent) => void
   onPointerUp: (e: React.PointerEvent) => void
 }
 
-export function Board({ board, clearing, floats, shake, children, ...handlers }: Props) {
+export function Board({ board, clearing, floats, shake, armed, children, ...handlers }: Props) {
   const tiles = []
   for (let r = 0; r < SIZE; r++)
     for (let c = 0; c < SIZE; c++) {
       const t = board[r][c]
-      if (t) tiles.push(<Tile key={t.id} tile={t} row={r} col={c} clearing={clearing.has(t.id)} />)
+      if (t)
+        tiles.push(<Tile key={t.id} tile={t} row={r} col={c} clearing={clearing.has(t.id)} armed={armed === t.id} />)
     }
   // 依 id 排序讓 DOM 順序穩定，避免移動時重新掛載
   tiles.sort((a, b) => String(a.key).localeCompare(String(b.key)))

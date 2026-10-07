@@ -1,28 +1,42 @@
 import { useEffect, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
-const CHECK_INTERVAL_MS = 60 * 60 * 1000
+const CHECK_INTERVAL_MS = 60 * 60 * 1000 // 一直開著：每小時檢查
+const RESUME_CHECK_MS = 5 * 60 * 1000 // 切回 App：距上次檢查超過 5 分鐘就檢查
 
-/**
- * 定期檢查新版本：每小時一次，另外在切回 App 時也檢查（手機放背景時計時器會暫停）。
- * 兩者共用節流，最多一小時檢查一次；離線時略過。
- */
-function scheduleUpdateChecks(swUrl: string, registration: ServiceWorkerRegistration) {
-  let lastCheck = Date.now()
-  const check = async () => {
-    if (Date.now() - lastCheck < CHECK_INTERVAL_MS || registration.installing || !navigator.onLine) return
-    lastCheck = Date.now()
-    try {
-      // 先確認伺服器可連線，避免在不穩的網路下讓 update() 報錯
-      const res = await fetch(swUrl, { cache: 'no-store' })
-      if (res.ok) await registration.update()
-    } catch {
-      /* 網路不穩：下次再試 */
-    }
+// 手機開 App 常常是從背景恢復、不會重新載入頁面，瀏覽器就不會自己檢查新版本，所以要主動檢查
+let sw: { url: string; registration: ServiceWorkerRegistration } | null = null
+let lastCheck = Date.now()
+
+export type UpdateCheckResult = 'found' | 'latest' | 'offline' | 'unsupported'
+
+/** 立刻檢查新版本；找到時會自動出現「有新版本 [更新]」 */
+export async function checkForUpdate(): Promise<UpdateCheckResult> {
+  if (!sw) return 'unsupported'
+  if (!navigator.onLine) return 'offline'
+  const { url, registration } = sw
+  lastCheck = Date.now()
+  try {
+    // 先確認伺服器可連線（避免機上 Wi-Fi 登入頁之類的情況讓 update() 報錯）
+    const res = await fetch(url, { cache: 'no-store' })
+    if (!res.ok) return 'offline'
+    await registration.update()
+    return registration.installing || registration.waiting ? 'found' : 'latest'
+  } catch {
+    return 'offline'
   }
-  setInterval(check, CHECK_INTERVAL_MS)
+}
+
+function scheduleUpdateChecks(swUrl: string, registration: ServiceWorkerRegistration) {
+  sw = { url: swUrl, registration }
+  lastCheck = Date.now()
+  const checkIfStale = (minGap: number) => {
+    if (Date.now() - lastCheck < minGap || registration.installing) return
+    void checkForUpdate()
+  }
+  setInterval(() => checkIfStale(CHECK_INTERVAL_MS), CHECK_INTERVAL_MS)
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void check()
+    if (document.visibilityState === 'visible') checkIfStale(RESUME_CHECK_MS)
   })
 }
 

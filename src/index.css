@@ -1322,6 +1322,25 @@ body {
   font-weight: 400;
 }
 
+/* ── 長按選牌（準備換位）───────────── */
+.board {
+  -webkit-touch-callout: none; /* iOS 長按不要跳出系統選單 */
+}
+
+.tile-pos.armed {
+  z-index: 3;
+}
+
+.tile-pos.armed .tile {
+  transform: translateY(-6%) scale(1.08);
+  box-shadow:
+    0 0 0 3px var(--jade),
+    0 0 22px var(--jade),
+    0 8px 0 var(--tile-back),
+    0 12px 16px rgba(0, 0, 0, 0.5);
+  transition: transform 120ms ease-out;
+}
+
 /* ── 特殊牌 ─────────────────────────── */
 .tile.has-power {
   --glow: var(--gold);
@@ -1486,6 +1505,24 @@ body {
   flex: none;
   font-size: 20px;
   line-height: 1.2;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.version-note {
+  margin: 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--jade);
 }
 
 /* ── PWA ────────────────────────────── */

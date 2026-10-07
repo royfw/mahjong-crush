@@ -82,6 +82,8 @@ const KEY_DIR: Record<string, Direction> = {
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
 const DIRS: Direction[] = ['up', 'down', 'left', 'right']
+const LONG_PRESS_MS = 280 // 長按多久算選牌
+const PRESS_SLOP = 10 // 長按期間手指可容許的晃動（px）
 
 const POWER_ICON = { plus: '➕', row: '↔', col: '↕', cross: '✚', blast: '💥', suit: '🎨' } as const
 const powerIcons = (hits: PowerHit[]) =>
@@ -345,9 +347,9 @@ export function Game() {
   }
 
   /**
-   * 一步操作。from = 手指起點格：
-   *   先試「和 dir 方向的鄰牌交換」，能形成牌型就換（Candy Crush 式，消耗 1 次換牌）；
-   *   否則照舊整盤往 dir 推。
+   * 一步操作：
+   *   from 沒給 → 整盤往 dir 推；推不動就擠壓（消耗 1 次換牌）
+   *   from 有給 → 把那張牌和 dir 方向的鄰牌交換（長按牌再滑 / 滑鼠拖牌）；能湊成牌型才換，否則只提示
    */
   const handleMove = useCallback(async (dir: Direction, from?: [number, number]) => {
     if (busyRef.current || g.current.over || modalRef.current) return
@@ -363,8 +365,16 @@ export function Game() {
     let collapseDir: Direction = dir
     let squeeze: ReturnType<typeof expandRemoval> | null = null
     let squeezed = 0
-    const swapped = from && st0.swaps > 0 ? trySwap(st0.board, from[0], from[1], dir) : null
-    if (swapped) {
+    if (from) {
+      // 換牌是明確動作（長按牌再滑 / 滑鼠拖牌）：換不了就提示原因，不會改成推整盤
+      const swapped = st0.swaps > 0 ? trySwap(st0.board, from[0], from[1], dir) : null
+      if (!swapped) {
+        fx.invalid()
+        setShake(true)
+        setTimeout(() => setShake(false), 200)
+        showToast(st0.swaps > 0 ? '換了也湊不成牌型' : '換牌次數用完了', 'bad')
+        return
+      }
       moved = swapped
       kind = 'swap'
       collapseDir = 'down'
@@ -532,22 +542,55 @@ export function Game() {
   }
   const swipeDir = (dx: number, dy: number): Direction =>
     Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up'
+  // 一般滑動 = 推整盤；長按一張牌（手指不動）選起來後再滑 = 和旁邊的牌換位
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const armedRef = useRef<[number, number] | null>(null)
+  const [armed, setArmed] = useState<string | null>(null) // 被長按選起來的牌 id（畫面高亮用）
+  const clearPress = () => {
+    if (pressTimer.current) clearTimeout(pressTimer.current)
+    pressTimer.current = null
+  }
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0]
     touchStart.current = { x: t.clientX, y: t.clientY }
+    clearPress()
+    armedRef.current = null
+    const cell = cellFromPoint(t.clientX, t.clientY)
+    const tile = cell && g.current.board[cell[0]][cell[1]]
+    if (!cell || !tile || busyRef.current) return
+    pressTimer.current = setTimeout(() => {
+      armedRef.current = cell
+      setArmed(tile.id)
+      try {
+        navigator.vibrate?.(15)
+      } catch {
+        /* ignore */
+      }
+    }, LONG_PRESS_MS)
+  }
+  const onTouchMove = (e: React.TouchEvent) => {
+    // 長按成立前手指就移動了 → 是一般滑動，取消長按
+    const st = touchStart.current
+    if (!st || armedRef.current) return
+    const t = e.touches[0]
+    if (Math.hypot(t.clientX - st.x, t.clientY - st.y) > PRESS_SLOP) clearPress()
   }
   const onTouchEnd = (e: React.TouchEvent) => {
+    clearPress()
     const st = touchStart.current
+    const from = armedRef.current
     touchStart.current = null
+    armedRef.current = null
+    setArmed(null)
     if (!st || (e.target as Element).closest('input')) return
     const t = e.changedTouches[0]
     const dx = t.clientX - st.x
     const dy = t.clientY - st.y
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return
-    handleMove(swipeDir(dx, dy), cellFromPoint(st.x, st.y))
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return // 長按後沒滑 = 取消選取
+    handleMove(swipeDir(dx, dy), from ?? undefined)
   }
 
-  // 桌機：滑鼠在牌上拖曳 = 推那張牌（觸控交給上面的 touch 事件）
+  // 桌機：滑鼠拖一張牌 = 換牌（推整盤用方向鍵；觸控交給上面的 touch 事件）
   const mouseStart = useRef<{ x: number; y: number } | null>(null)
   const onBoardPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button === 0) mouseStart.current = { x: e.clientX, y: e.clientY }
@@ -564,7 +607,17 @@ export function Game() {
 
   return (
     <>
-      <div className={`game${hurt ? ' hurt-' + (hurt % 2) : ''}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div
+        className={`game${hurt ? ' hurt-' + (hurt % 2) : ''}`}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={() => {
+          clearPress()
+          armedRef.current = null
+          setArmed(null)
+        }}
+      >
         <aside className="side side-info">
           <PlayerBar
             p={player}
@@ -603,6 +656,7 @@ export function Game() {
               clearing={clearing}
               floats={floats}
               shake={shake}
+              armed={armed}
               onPointerDown={onBoardPointerDown}
               onPointerUp={onBoardPointerUp}
             >
@@ -638,9 +692,9 @@ export function Game() {
 
           <footer className="help">
             <p className="hint">
-              滑動整盤，或推一張牌
+              滑動推整盤，
               <wbr />
-              換位湊牌型！
+              長按一張牌再滑可以換位！
             </p>
             <div className="rules">
               <div className="rule">
@@ -680,7 +734,7 @@ export function Game() {
               <span>🎨 同花</span>
             </p>
             <div className="keys">
-              <span className="keys-text">方向鍵推整盤，滑鼠拖牌換位</span>
+              <span className="keys-text">方向鍵推整盤，滑鼠拖一張牌換位</span>
               <InstallButton />
               <button className="btn ghost" onClick={restart}>
                 重新開始
