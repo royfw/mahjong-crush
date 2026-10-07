@@ -3,13 +3,24 @@
 // gameplay: true（玩法有改變）→ 老玩家更新後自動跳出，並在最上面用 howTo 說明新的玩法；
 // 一般修正、文字調整不設 gameplay，只亮紅點、不打斷遊戲
 
+/**
+ * 一條玩法說明。topic 相同時，較新版本的說明會取代舊的（例如換牌方式改了，舊說明就不再顯示）；
+ * returningOnly：只對老玩家有意義（例如「不用再手動施放」），新玩家的教學不顯示
+ */
+export interface HowTo {
+  icon: string
+  text: string
+  topic?: string
+  returningOnly?: boolean
+}
+
 export interface ReleaseNote {
   id: string // 唯一識別，例如日期；同一天多次改版加 -2
   date: string
   title: string
   items: string[]
   gameplay?: boolean // 玩法有改變：更新後自動跳出說明
-  howTo?: { icon: string; text: string }[] // 新玩法的簡短操作說明
+  howTo?: HowTo[] // 新玩法的簡短操作說明
 }
 
 export const CHANGELOG: ReleaseNote[] = [
@@ -19,8 +30,8 @@ export const CHANGELOG: ReleaseNote[] = [
     title: '換牌改成長按，不會再誤推整盤',
     gameplay: true,
     howTo: [
-      { icon: '👉', text: '一般滑動：推整盤（推不動就擠壓）' },
-      { icon: '✋', text: '長按一張牌，等牌浮起來再往旁邊滑：和鄰牌換位' },
+      { icon: '👉', text: '一般滑動：推整盤（推不動就擠壓）', topic: 'slide' },
+      { icon: '✋', text: '長按一張牌，等牌浮起來再往旁邊滑：和鄰牌換位', topic: 'swap' },
     ],
     items: [
       '換牌改成長按一張牌（會輕震、牌浮起來）再滑；一般滑動一律推整盤，不會再誤觸',
@@ -35,9 +46,9 @@ export const CHANGELOG: ReleaseNote[] = [
     title: '技能改成特殊牌，不用再手動施放',
     gameplay: true,
     howTo: [
-      { icon: '🎁', text: '過關選技能後，盤面會立刻出現對應的特殊牌：💣→💥、🧹→↔↕、✨→🎨' },
-      { icon: '📈', text: '技能等級越高，那種特殊牌越常出現；Lv3 還會變強' },
-      { icon: '👆', text: '不用再點技能、點棋盤，全部只要滑動' },
+      { icon: '🎁', text: '過關選技能後，盤面會立刻出現對應的特殊牌：💣→💥、🧹→↔↕、✨→🎨', topic: 'skill' },
+      { icon: '📈', text: '技能等級越高，那種特殊牌越常出現；Lv3 還會變強', topic: 'skill-level' },
+      { icon: '👆', text: '不用再點技能、點棋盤，全部只要滑動', topic: 'no-cast', returningOnly: true },
     ],
     items: [
       '過關選技能後立刻放特殊牌（張數 = 等級），之後整局那種特殊牌更常出現',
@@ -53,10 +64,10 @@ export const CHANGELOG: ReleaseNote[] = [
     title: '特殊牌登場、推一張牌換位、擠壓、不同花也能消',
     gameplay: true,
     howTo: [
-      { icon: '👆', text: '從一張牌往旁邊滑：和鄰牌換位能湊成牌型就會換' },
-      { icon: '🧱', text: '推不動時往同方向再推一次：每排最靠牆的牌被擠掉' },
-      { icon: '✨', text: '發光的特殊牌被消到會連帶爆開' },
-      { icon: '🀄', text: '不同花也能消：同號、雜順、跳號（分數較低）' },
+      { icon: '👆', text: '從一張牌往旁邊滑：和鄰牌換位能湊成牌型就會換', topic: 'swap' },
+      { icon: '🧱', text: '推不動時往同方向再推一次：每排最靠牆的牌被擠掉', topic: 'squeeze' },
+      { icon: '✨', text: '發光的特殊牌被消到會連帶爆開', topic: 'power' },
+      { icon: '🀄', text: '不同花也能消：同號、雜順、跳號（分數較低）', topic: 'loose' },
     ],
     items: [
       '手指從一張牌滑出去，和旁邊的牌交換後能湊成牌型就會換位消除；不能湊就照舊推整盤',
@@ -101,6 +112,27 @@ export function unseenReleases(seen: string | null): ReleaseNote[] {
   const i = CHANGELOG.findIndex((n) => n.id === seen)
   return i === -1 ? CHANGELOG : CHANGELOG.slice(0, i)
 }
+
+/**
+ * 合併多個版本的玩法說明（新到舊）：同 topic 只保留最新的一條，避免出現已過時、互相矛盾的說明
+ */
+export function mergeHowTo(notes: ReleaseNote[], forNewPlayer = false): HowTo[] {
+  const seenTopics = new Set<string>()
+  const out: HowTo[] = []
+  for (const n of notes)
+    for (const h of n.howTo ?? []) {
+      if (forNewPlayer && h.returningOnly) continue
+      if (h.topic) {
+        if (seenTopics.has(h.topic)) continue
+        seenTopics.add(h.topic)
+      }
+      out.push(h)
+    }
+  return out
+}
+
+/** 新玩家的玩法教學：所有版本合併後的「目前玩法」 */
+export const currentHowTo = () => mergeHowTo(CHANGELOG, true)
 
 /** 沒看過的版本裡有沒有玩法改變 */
 export const hasGameplayChange = (seen: string | null) => unseenReleases(seen).some((n) => n.gameplay)

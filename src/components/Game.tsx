@@ -176,30 +176,30 @@ export function Game() {
     setModal('news')
   }
 
-  // 第一次遇到新玩家：跳出取暱稱畫面（新玩家不需要看更新內容，直接記為已看過）
-  // 老玩家更新到新版後：自動跳出一次更新內容
+  // 開啟遊戲時要跳哪個畫面：
+  //   老玩家（玩過的痕跡：看過更新內容或有最高分，不論有沒有登入）且有沒看過的玩法改變 → 先跳「玩法有更新」
+  //   還沒登入排行榜 → 歡迎畫面（含玩法教學）；若剛跳了玩法更新，關掉後再接著出現
+  //   全新玩家 → 歡迎畫面已經教過目前玩法，直接記為看過最新版
   const welcomed = useRef(false)
+  const welcomeAfterNews = useRef(false)
   useEffect(() => {
     if (welcomed.current || player.status === 'loading') return
     welcomed.current = true
     const seen = getSeenRelease()
-    if (player.status === 'new') {
-      // 真正第一次來：記為已看過；沒登入的老玩家：保留紅點，讓他自己點來看
-      if (seen === null) {
-        markReleaseSeen()
-        setHasNews(false)
-      }
-      setModal('welcome')
-    } else if (seen === null && !player.player) {
-      // 離線且從沒玩過：當新玩家處理，不跳更新內容
-      markReleaseSeen()
-      setHasNews(false)
-    } else if (seen !== latestRelease() && hasGameplayChange(seen)) {
-      // 玩法有改變才自動跳出並說明新玩法；一般更新只亮 📢 紅點
+    const returning = seen !== null || loadBest() > 0
+    const showGameplay = returning && seen !== latestRelease() && hasGameplayChange(seen)
+    if (showGameplay) {
       setGameplayNotes(unseenReleases(seen).filter((n) => n.gameplay))
       markReleaseSeen()
       setHasNews(false)
+      welcomeAfterNews.current = player.status === 'new'
       setModal('news')
+    } else {
+      if (!returning) {
+        markReleaseSeen()
+        setHasNews(false)
+      }
+      if (player.status === 'new') setModal('welcome')
     }
   }, [player.status, player.player])
 
@@ -745,7 +745,15 @@ export function Game() {
       </div>
       {choices && <LevelUp level={s.level} choices={choices} skills={s.skills} onPick={pickSkill} />}
       <PwaPrompt />
-      {modal === 'news' && <NewsModal gameplayNotes={gameplayNotes} onClose={() => setModal(null)} />}
+      {modal === 'news' && (
+        <NewsModal
+          gameplayNotes={gameplayNotes}
+          onClose={() => {
+            setModal(welcomeAfterNews.current ? 'welcome' : null)
+            welcomeAfterNews.current = false
+          }}
+        />
+      )}
       {(modal === 'welcome' || modal === 'board') && (
         <PlayerModal key={modal + player.fp} p={player} mode={modal} onClose={() => setModal(null)} />
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, randomNick, shortCode, type Leaderboard } from '../game/player'
+import { currentHowTo } from '../game/changelog'
 import type { PlayerApi } from './usePlayer'
 
 interface Props {
@@ -52,7 +53,19 @@ export function PlayerModal({ p, mode, onClose }: Props) {
           }}
         >
           <div className="modal-title">歡迎來到雀消</div>
-          <p className="modal-text">這台裝置會用瀏覽器指紋自動登入，不用帳號密碼。取個暱稱就能上排行榜。</p>
+          <ul className="howto compact">
+            <li>
+              <span className="howto-icon">🀄</span>
+              <span>水平或垂直三張湊成刻子、順子就會消除</span>
+            </li>
+            {currentHowTo().map((h) => (
+              <li key={h.text}>
+                <span className="howto-icon">{h.icon}</span>
+                <span>{h.text}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="modal-text">取個暱稱就能上排行榜（用瀏覽器指紋自動登入，不用帳號密碼）。</p>
           <input
             className="name-input"
             value={name}

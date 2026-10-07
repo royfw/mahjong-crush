@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CHANGELOG, type ReleaseNote } from '../game/changelog'
+import { CHANGELOG, mergeHowTo, type ReleaseNote } from '../game/changelog'
 import { checkForUpdate } from './Pwa'
 
 const UPDATE_TEXT = {
@@ -22,7 +22,7 @@ interface Props {
 
 /** 更新內容：最新的在最上面 */
 export function NewsModal({ onClose, gameplayNotes }: Props) {
-  const howTo = (gameplayNotes ?? []).flatMap((n) => n.howTo ?? [])
+  const howTo = mergeHowTo(gameplayNotes ?? [])
   const [checking, setChecking] = useState<keyof typeof UPDATE_TEXT | 'checking' | null>(null)
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
