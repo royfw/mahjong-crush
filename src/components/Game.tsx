@@ -40,6 +40,7 @@ import {
   type Skills,
   SWAP_MAX,
   SWAP_RECHARGE,
+  swapRules,
 } from '../game/skills'
 import { fx, isMuted, setMuted, unlockAudio } from '../game/feedback'
 import { Board, type FloatText } from './Board'
@@ -355,7 +356,7 @@ export function Game() {
     }
     st.level += 1
     st.levelStart = st.score
-    st.swaps = SWAP_MAX
+    st.swaps = swapRules(st.skills).max
     st.movesLeft = levelConfig(st.level).moves
     showToast(`LEVEL ${st.level}`)
     fx.levelUp()
@@ -380,6 +381,7 @@ export function Game() {
     const alive = () => gen === genRef.current
     const st0 = g.current
     const powers = powerSetup(st0.skills) // 技能等級決定特殊牌的機率與強化
+    const rules = swapRules(st0.skills) // 巧手等級決定換牌上限 / 回充 / 是否免步數
 
     // 三種操作：swap 換牌（從牌上滑、能湊牌型）｜slide 推整盤｜squeeze 推不動時再推＝擠壓
     let moved: BoardData | null = null
@@ -421,12 +423,13 @@ export function Game() {
       return
     }
     if (kind === 'slide') {
-      if (st0.swaps < SWAP_MAX && --st0.slidesToRecharge <= 0) {
+      if (st0.swaps < rules.max && --st0.slidesToRecharge <= 0) {
         st0.swaps += 1
-        st0.slidesToRecharge = SWAP_RECHARGE
+        st0.slidesToRecharge = rules.recharge
       }
     } else st0.swaps -= 1
-    st0.movesLeft -= 1
+    // 巧手 Lv3：換牌不算步數
+    if (!(kind === 'swap' && rules.freeSwap)) st0.movesLeft -= 1
 
     busyRef.current = true
     setStuck(false)
@@ -716,7 +719,7 @@ export function Game() {
         </main>
 
         <aside className="side side-play">
-          <SwapMeter swaps={s.swaps} slidesToRecharge={s.slidesToRecharge} />
+          <SwapMeter swaps={s.swaps} slidesToRecharge={s.slidesToRecharge} skills={s.skills} />
           <SkillBar skills={s.skills} />
 
           <footer className="help">

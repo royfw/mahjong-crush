@@ -25,6 +25,21 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    id: '2026-10-07-5',
+    date: '2026/10/07',
+    title: '新技能：🔄 巧手',
+    gameplay: true,
+    howTo: [
+      { icon: '🔄', text: '過關可以選「巧手」：換牌 / 擠壓次數更多、回充更快，Lv3 換牌不算步數', topic: 'nimble' },
+    ],
+    items: [
+      '過關選技能多了「🔄 巧手」',
+      'Lv1：換牌 / 擠壓上限 5 次、推整盤 4 次回 1 次；Lv2：上限 6 次、推 3 次回 1 次',
+      'Lv3：換牌不算步數（擠壓照算）',
+      '換牌列會顯示巧手等級與目前上限',
+    ],
+  },
+  {
     id: '2026-10-07-4',
     date: '2026/10/07',
     title: '每關有步數上限',

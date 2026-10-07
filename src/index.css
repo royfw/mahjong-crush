@@ -1325,6 +1325,18 @@ body {
   font-weight: 700;
 }
 
+.swap-label small {
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-weight: 400;
+  color: var(--gold);
+  font-size: 13px;
+}
+
+.swap-note b {
+  color: var(--jade);
+  font-weight: 700;
+}
+
 .swap-note {
   margin-left: auto;
   color: var(--muted);
@@ -1741,3 +1753,21 @@ body {
   }
 }
 
+/* 換牌列：空間不夠時（橫式側欄、平板）標題不拆字，說明改到下一行 */
+.swapmeter {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.swap-label {
+  white-space: nowrap;
+}
+
+.swap-note {
+  white-space: normal;
+  text-align: right;
+}
+
+.nowrap {
+  white-space: nowrap;
+}

@@ -10,7 +10,7 @@ import {
   type PowerWeights,
 } from './logic'
 
-export type SkillId = 'bomb' | 'shovel' | 'purge' | 'heart'
+export type SkillId = 'bomb' | 'shovel' | 'purge' | 'nimble' | 'heart'
 
 export interface SkillDef {
   id: SkillId
@@ -49,6 +49,16 @@ export const SKILLS: Record<SkillId, SkillDef> = {
     desc: (lv) =>
       lv >= 3 ? '立刻放 3 張 🎨，同花之外連同數字也一起消' : `立刻放 ${lv} 張 🎨 同花牌（全盤同花色），之後更常出現`,
   },
+  nimble: {
+    id: 'nimble',
+    icon: '🔄',
+    name: '巧手',
+    maxLevel: 3,
+    desc: (lv) =>
+      lv >= 3
+        ? '換牌不算步數（擠壓照算）'
+        : `換牌 / 擠壓上限 ${SWAP_MAX + lv} 次，推整盤 ${SWAP_RECHARGE - lv} 次回 1 次`,
+  },
   heart: {
     id: 'heart',
     icon: '❤️',
@@ -58,13 +68,24 @@ export const SKILLS: Record<SkillId, SkillDef> = {
   },
 }
 
-export const SKILL_ORDER: SkillId[] = ['bomb', 'shovel', 'purge', 'heart']
+export const SKILL_ORDER: SkillId[] = ['bomb', 'shovel', 'purge', 'nimble', 'heart']
 export const BASE_HP = 3
 export const DAMAGE_CLEAR = 10 // 卡死扣血時清掉的牌數
 
 // 換牌（Candy Crush 式）/ 擠壓 共用次數：推整盤 SWAP_RECHARGE 次回 1 次，過關補滿
 export const SWAP_MAX = 4
 export const SWAP_RECHARGE = 5
+
+/** 巧手：Lv1/Lv2 各 +1 上限、回充快 1 次；Lv3 換牌不算步數 */
+export interface SwapRules {
+  max: number
+  recharge: number // 推整盤幾次回 1 次
+  freeSwap: boolean // 換牌不扣步數
+}
+export function swapRules(skills: Partial<Record<SkillId, { level: number }>>): SwapRules {
+  const lv = Math.min(skills.nimble?.level ?? 0, 2)
+  return { max: SWAP_MAX + lv, recharge: SWAP_RECHARGE - lv, freeSwap: (skills.nimble?.level ?? 0) >= 3 }
+}
 
 export interface SkillState {
   level: number
