@@ -12,33 +12,25 @@ export interface FloatText {
 interface Props {
   board: BoardData
   clearing: Set<string>
-  preview: Set<string>
-  targeting: boolean
   floats: FloatText[]
   shake: boolean
   children?: React.ReactNode
-  onClick: (e: React.MouseEvent) => void
-  onMouseMove: (e: React.MouseEvent) => void
-  onMouseLeave: () => void
   onPointerDown: (e: React.PointerEvent) => void
   onPointerUp: (e: React.PointerEvent) => void
 }
 
-export function Board({ board, clearing, preview, targeting, floats, shake, children, ...handlers }: Props) {
+export function Board({ board, clearing, floats, shake, children, ...handlers }: Props) {
   const tiles = []
   for (let r = 0; r < SIZE; r++)
     for (let c = 0; c < SIZE; c++) {
       const t = board[r][c]
-      if (t)
-        tiles.push(
-          <Tile key={t.id} tile={t} row={r} col={c} clearing={clearing.has(t.id)} targeted={preview.has(t.id)} />,
-        )
+      if (t) tiles.push(<Tile key={t.id} tile={t} row={r} col={c} clearing={clearing.has(t.id)} />)
     }
   // 依 id 排序讓 DOM 順序穩定，避免移動時重新掛載
   tiles.sort((a, b) => String(a.key).localeCompare(String(b.key)))
 
   return (
-    <div className={`board${shake ? ' shake' : ''}${targeting ? ' targeting' : ''}`} {...handlers}>
+    <div className={`board${shake ? ' shake' : ''}`} {...handlers}>
       {Array.from({ length: SIZE * SIZE }, (_, i) => (
         <div key={i} className="cell" style={{ '--r': Math.floor(i / SIZE), '--c': i % SIZE } as React.CSSProperties} />
       ))}

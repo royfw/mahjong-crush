@@ -1,40 +1,40 @@
-import { SKILLS, SKILL_ORDER, maxCharges, type SkillId, type Skills } from '../game/skills'
+import { SKILLS, type SkillId, type Skills } from '../game/skills'
 
 interface Props {
   skills: Skills
-  targeting: SkillId | null
-  onToggle: (id: SkillId) => void
 }
 
-export function SkillBar({ skills, targeting, onToggle }: Props) {
-  const actives = SKILL_ORDER.filter((id) => SKILLS[id].active)
+// 只有會產生特殊牌的技能顯示在這裡（強身反映在血量上）
+const POWER_SKILLS: SkillId[] = ['bomb', 'shovel', 'purge']
+const POWER_NAME: Record<string, string> = { bomb: '爆破', shovel: '直線', purge: '同花' }
+
+/** 特殊牌加成（只顯示，不需要操作）：等級越高，對應的特殊牌越常出現 */
+export function SkillBar({ skills }: Props) {
   return (
     <div className="skillbar">
-      {actives.map((id, i) => {
+      {POWER_SKILLS.map((id) => {
         const def = SKILLS[id]
-        const sk = skills[id]
-        const max = sk ? maxCharges(id, sk.level) : 0
-        const ready = !!sk && sk.charges > 0
+        const level = skills[id]?.level ?? 0
+        const icon = id === 'shovel' && level >= 3 ? '✚' : def.powerIcon
+        const name = id === 'shovel' && level >= 3 ? '十字' : POWER_NAME[id]
         return (
-          <button
+          <div
             key={id}
-            className={`skill${sk ? '' : ' locked'}${ready ? ' ready' : ''}${targeting === id ? ' active' : ''}`}
-            onClick={() => onToggle(id)}
-            disabled={!ready}
-            title={sk ? def.desc(sk.level) : '過關後可解鎖'}
+            className={`skill${level ? ' owned' : ' locked'}`}
+            title={level ? def.desc(level) : `過關時選「${def.icon} ${def.name}」可以讓 ${def.powerIcon} 更常出現`}
           >
-            <span className="skill-key">{sk ? i + 1 : '🔒'}</span>
-            <span className="skill-icon">{def.icon}</span>
+            {!level && <span className="skill-key">🔒</span>}
+            <span className="skill-icon">{icon}</span>
             <span className="skill-name">
-              {def.name}
-              {sk && <small> Lv{sk.level}</small>}
+              {name}
+              {level > 0 && <small> Lv{level}</small>}
             </span>
             <span className="pips">
-              {Array.from({ length: max }, (_, k) => (
-                <i key={k} className={k < (sk?.charges ?? 0) ? 'pip on' : 'pip'} />
+              {Array.from({ length: def.maxLevel }, (_, k) => (
+                <i key={k} className={k < level ? 'pip on' : 'pip'} />
               ))}
             </span>
-          </button>
+          </div>
         )
       })}
     </div>

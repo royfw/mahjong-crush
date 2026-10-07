@@ -698,6 +698,16 @@ body {
   opacity: 0.45;
 }
 
+.skill.owned {
+  cursor: default;
+  border-color: rgba(245, 200, 106, 0.45);
+}
+
+.skill.locked {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .skill.ready:hover {
   transform: translateY(-2px);
   border-color: var(--gold);
@@ -758,18 +768,6 @@ body {
 .pip.on {
   background: var(--gold);
   box-shadow: 0 0 6px var(--gold);
-}
-
-.board.targeting {
-  cursor: crosshair;
-}
-
-.tile-pos.targeted .tile {
-  box-shadow:
-    0 0 0 3px var(--jade),
-    0 0 18px rgba(62, 240, 176, 0.8),
-    0 4px 0 var(--tile-back);
-  transform: scale(0.94);
 }
 
 .stuck-hint,
@@ -1338,7 +1336,8 @@ body {
   --glow: #8fd3ff;
 }
 .tile.power-row,
-.tile.power-col {
+.tile.power-col,
+.tile.power-cross {
   --glow: var(--jade);
 }
 .tile.power-blast {
@@ -1375,7 +1374,8 @@ body {
 
 /* 箭頭字形比 emoji 小，放大並加粗才看得清楚 */
 .power-row .power-badge,
-.power-col .power-badge {
+.power-col .power-badge,
+.power-cross .power-badge {
   font-family: system-ui, sans-serif;
   font-size: calc(var(--cell) * 0.32);
 }

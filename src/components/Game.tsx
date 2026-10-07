@@ -16,6 +16,10 @@ import {
   SQUEEZE_TILE_SCORE,
   expandRemoval,
   grantPower,
+  placePowers,
+  isEmpty,
+  CLEAR_BOARD_BONUS,
+  REFILL_TILES,
   countOverlaps,
   POWER_TILE_SCORE,
   type PowerHit,
@@ -27,12 +31,10 @@ import {
   BASE_HP,
   DAMAGE_CLEAR,
   SKILLS,
-  SKILL_ORDER,
-  SKILL_TILE_SCORE,
   levelConfig,
-  maxCharges,
+  powerSetup,
   rollChoices,
-  skillCells,
+  skillPlacement,
   type SkillId,
   type Skills,
   SWAP_MAX,
@@ -81,7 +83,7 @@ const KEY_DIR: Record<string, Direction> = {
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
 const DIRS: Direction[] = ['up', 'down', 'left', 'right']
 
-const POWER_ICON = { plus: '➕', row: '↔', col: '↕', blast: '💥', suit: '🎨' } as const
+const POWER_ICON = { plus: '➕', row: '↔', col: '↕', cross: '✚', blast: '💥', suit: '🎨' } as const
 const powerIcons = (hits: PowerHit[]) =>
   hits.length ? [...new Set(hits.map((h) => POWER_ICON[h.power]))].join('') + ' ' : ''
 
@@ -90,7 +92,7 @@ function playHits(hits: PowerHit[], chain: number) {
   const ps = new Set(hits.map((h) => h.power))
   if (ps.has('suit')) fx.sparkle()
   else if (ps.has('blast')) fx.bomb()
-  else if (ps.has('row') || ps.has('col')) fx.sweep()
+  else if (ps.has('row') || ps.has('col') || ps.has('cross')) fx.sweep()
   else fx.clear(chain)
 }
 
@@ -150,10 +152,8 @@ export function Game() {
   const [shake, setShake] = useState(false)
   const [hurt, setHurt] = useState(0)
   const [bump, setBump] = useState(0)
-  const [targeting, setTargeting] = useState<SkillId | null>(null)
-  const [hover, setHover] = useState<[number, number] | null>(null)
   const [choices, setChoices] = useState<SkillId[] | null>(null)
-  const [stuck, setStuck] = useState<'squeeze' | 'skill' | false>(false)
+  const [stuck, setStuck] = useState(false)
   const [muted, setMutedState] = useState(isMuted)
   const [modal, setModal] = useState<'welcome' | 'board' | 'news' | null>(null)
   const [result, setResult] = useState<{ rank: number; total: number } | 'queued' | null>(null)
@@ -225,8 +225,6 @@ export function Game() {
   const busyRef = useRef(false)
   const genRef = useRef(0) // 重開局時讓進行中的流程失效
   const fxId = useRef(0)
-  const targetingRef = useRef<SkillId | null>(null)
-  targetingRef.current = targeting
 
   const s = g.current
   const cfg = levelConfig(s.level)
@@ -262,8 +260,6 @@ export function Game() {
     render()
   }
 
-  const hasCharges = () => SKILL_ORDER.some((id) => SKILLS[id].active && (g.current.skills[id]?.charges ?? 0) > 0)
-
   /** 回合結束：先檢查過關，再檢查卡死 / 扣血 */
   const endTurn = async (alive: () => boolean) => {
     const st = g.current
@@ -278,9 +274,7 @@ export function Game() {
     if (checkGameOver(st.board)) {
       const canSqueeze = st.swaps > 0 && DIRS.some((d) => squeezeCells(st.board, d))
       if (canSqueeze) {
-        setStuck('squeeze')
-      } else if (hasCharges()) {
-        setStuck('skill')
+        setStuck(true)
       } else {
         await takeDamage(alive)
         if (!alive()) return
@@ -318,18 +312,22 @@ export function Game() {
   const levelUp = (pick: SkillId | null) => {
     const st = g.current
     if (pick) {
-      const cur = st.skills[pick]
-      const level = (cur?.level ?? 0) + 1
-      st.skills[pick] = { level, charges: 0 }
+      const level = (st.skills[pick]?.level ?? 0) + 1
+      st.skills[pick] = { level }
       if (pick === 'heart') {
         st.maxHp += 1
         st.hp = st.maxHp
       }
-    }
-    // 過關補滿所有技能次數
-    for (const id of SKILL_ORDER) {
-      const sk = st.skills[id]
-      if (sk) sk.charges = maxCharges(id, sk.level)
+      // 技能 = 特殊牌：立刻把盤面上幾張牌變成對應的特殊牌
+      const place = skillPlacement(pick, level)
+      if (place) {
+        const { board, cells } = placePowers(st.board, place.pick, place.count)
+        st.board = board
+        if (cells.length) {
+          addFloat(cells, `${SKILLS[pick].powerIcon} ×${cells.length}`)
+          fx.sparkle()
+        }
+      }
     }
     st.level += 1
     st.levelStart = st.score
@@ -353,10 +351,10 @@ export function Game() {
    */
   const handleMove = useCallback(async (dir: Direction, from?: [number, number]) => {
     if (busyRef.current || g.current.over || modalRef.current) return
-    if (targetingRef.current) setTargeting(null)
     const gen = genRef.current
     const alive = () => gen === genRef.current
     const st0 = g.current
+    const powers = powerSetup(st0.skills) // 技能等級決定特殊牌的機率與強化
 
     // 三種操作：swap 換牌（從牌上滑、能湊牌型）｜slide 推整盤｜squeeze 推不動時再推＝擠壓
     let moved: BoardData | null = null
@@ -378,7 +376,7 @@ export function Game() {
         const sc = squeezeCells(st0.board, dir)
         if (sc) {
           kind = 'squeeze'
-          squeeze = expandRemoval(st0.board, sc)
+          squeeze = expandRemoval(st0.board, sc, Math.random, powers.mods)
           squeezed = sc.length
         }
       }
@@ -414,7 +412,6 @@ export function Game() {
     } else fx.move()
     let b = moved!
     let chain = 0
-    let bonusGiven = false
     let cleared = false
     let granted = false // 每步最多因大消除獲得 1 張特殊牌
     const prevStreak = g.current.streak
@@ -440,7 +437,7 @@ export function Game() {
         const mult = streakMultiplier(g.current.streak)
         const seeds = matches.flatMap((m) => m.cells)
         // 特殊牌：被消到就連帶觸發（可連鎖引爆）
-        const { cells, extra, hits } = expandRemoval(b, seeds)
+        const { cells, extra, hits } = expandRemoval(b, seeds, Math.random, powers.mods)
         const pts = (calculateScore(matches, chain) + extra * POWER_TILE_SCORE * chain) * mult
         const { board: removed, removedIds } = removeCells(b, cells)
         // 只有一種牌型時顯示名稱，讓玩家知道是什麼被消掉（寬鬆牌型尤其需要）
@@ -452,21 +449,6 @@ export function Game() {
         if (chain >= 2) setCombo({ n: chain, key: ++fxId.current })
         addScore(pts)
 
-        // Combo ×3 以上：隨機補 1 次技能
-        if (chain >= 3 && !bonusGiven) {
-          const sk = g.current.skills
-          const ids = SKILL_ORDER.filter((id) => {
-            const x = sk[id]
-            return SKILLS[id].active && x && x.charges < maxCharges(id, x.level)
-          })
-          if (ids.length) {
-            const id = ids[Math.floor(Math.random() * ids.length)]
-            sk[id]!.charges += 1
-            bonusGiven = true
-            showToast(`Combo 獎勵 +1 ${SKILLS[id].icon}`)
-          }
-        }
-
         await sleep(CLEAR_MS)
         if (!alive()) return
         setClearing(new Set())
@@ -474,7 +456,7 @@ export function Game() {
         // 交叉消除或 Combo ×2 以上：在消除處附近生一張特殊牌
         if (!granted && (countOverlaps(matches) > 0 || chain >= 2)) {
           granted = true
-          b = grantPower(b, seeds[Math.floor(seeds.length / 2)])
+          b = grantPower(b, seeds[Math.floor(seeds.length / 2)], Math.random, powers.earned)
         }
         commit(b)
         await sleep(SLIDE_MS)
@@ -486,58 +468,26 @@ export function Game() {
 
     const lc = levelConfig(g.current.level)
     const count = 2 + (Math.random() < lc.thirdSpawnRate ? 1 : 0) + lc.extraSpawn
-    b = spawnTiles(b, count, Math.random, lc.assistRate).board
+    b = spawnTiles(b, count, Math.random, lc.assistRate, powers.spawn).board
     commit(b)
     await sleep(SPAWN_MS)
     await resolve() // 新牌剛好湊成也算（連鎖繼續）
     if (!alive()) return
+    // 清盤：特殊牌把整盤消光 → 獎勵分數並補一批新牌（空盤推不動，不能算卡死）
+    if (isEmpty(b)) {
+      showToast(`清盤！+${CLEAR_BOARD_BONUS}`)
+      fx.levelUp()
+      addScore(CLEAR_BOARD_BONUS)
+      b = spawnTiles(b, REFILL_TILES, Math.random, lc.assistRate, powers.spawn).board
+      commit(b)
+      await sleep(SPAWN_MS)
+      await resolve()
+      if (!alive()) return
+    }
     if (!cleared) g.current.streak = 0
     render()
 
     await endTurn(alive)
-  }, [])
-
-  const castSkill = async (r: number, c: number) => {
-    const id = targetingRef.current
-    if (!id || busyRef.current) return
-    const st = g.current
-    const sk = st.skills[id]
-    if (!sk || sk.charges <= 0) return
-    const cells = skillCells(st.board, id, sk.level, r, c)
-    if (!cells.length) {
-      fx.invalid()
-      setShake(true)
-      setTimeout(() => setShake(false), 200)
-      return
-    }
-    const gen = genRef.current
-    const alive = () => gen === genRef.current
-    busyRef.current = true
-    sk.charges -= 1
-    setTargeting(null)
-    setHover(null)
-    setStuck(false)
-
-    ;({ bomb: fx.bomb, shovel: fx.sweep, purge: fx.sparkle, heart: fx.sparkle })[id]()
-    // 技能炸到特殊牌也會觸發
-    const ex = expandRemoval(st.board, cells)
-    const { board, removedIds } = removeCells(st.board, ex.cells)
-    const pts = cells.length * SKILL_TILE_SCORE + ex.extra * POWER_TILE_SCORE
-    addFloat(cells, `${SKILLS[id].icon}${powerIcons(ex.hits)} +${pts}`)
-    setClearing(removedIds)
-    addScore(pts)
-    await sleep(CLEAR_MS)
-    if (!alive()) return
-    setClearing(new Set())
-    commit(board)
-    await endTurn(alive)
-  }
-
-  const toggleSkill = useCallback((id: SkillId) => {
-    if (busyRef.current || g.current.over) return
-    const sk = g.current.skills[id]
-    if (!sk || sk.charges <= 0 || !SKILLS[id].active) return
-    setTargeting((t) => (t === id ? null : id))
   }, [])
 
   const restart = useCallback(() => {
@@ -552,23 +502,15 @@ export function Game() {
     setFloats([])
     setCombo(null)
     setToast(null)
-    setTargeting(null)
     setChoices(null)
     setStuck(false)
     render()
   }, [])
 
-  // 鍵盤：方向 / WASD 移動，1~3 選技能，Esc 取消
+  // 鍵盤：方向 / WASD 移動
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (modalRef.current || (e.target as HTMLElement).tagName === 'INPUT') return
-      if (e.key === 'Escape') return setTargeting(null)
-      const n = Number(e.key)
-      if (n >= 1 && n <= 3) {
-        const actives = SKILL_ORDER.filter((id) => SKILLS[id].active && g.current.skills[id])
-        if (actives[n - 1]) toggleSkill(actives[n - 1])
-        return
-      }
       const dir = KEY_DIR[e.key] ?? KEY_DIR[e.key.toLowerCase()]
       if (!dir) return
       e.preventDefault()
@@ -576,11 +518,10 @@ export function Game() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [handleMove, toggleSkill])
+  }, [handleMove])
 
-  // 手機滑動（短距離視為點擊，交給 onClick）
+  // 手機滑動
   const touchStart = useRef<{ x: number; y: number } | null>(null)
-  const lastSwipe = useRef(0)
   /** 螢幕座標落在哪一格（棋盤外回 undefined） */
   const cellFromPoint = (x: number, y: number): [number, number] | undefined => {
     const el = document.querySelector('.board')
@@ -603,7 +544,6 @@ export function Game() {
     const dx = t.clientX - st.x
     const dy = t.clientY - st.y
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return
-    lastSwipe.current = Date.now()
     handleMove(swipeDir(dx, dy), cellFromPoint(st.x, st.y))
   }
 
@@ -619,32 +559,7 @@ export function Game() {
     const dx = e.clientX - st.x
     const dy = e.clientY - st.y
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 16) return
-    lastSwipe.current = Date.now()
     handleMove(swipeDir(dx, dy), cellFromPoint(st.x, st.y))
-  }
-
-  const cellAt = (e: React.MouseEvent): [number, number] => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    const clamp = (v: number) => Math.min(SIZE - 1, Math.max(0, Math.floor(v * SIZE)))
-    return [clamp((e.clientY - rect.top) / rect.height), clamp((e.clientX - rect.left) / rect.width)]
-  }
-  const onBoardClick = (e: React.MouseEvent) => {
-    if (!targeting || Date.now() - lastSwipe.current < 350) return
-    const [r, c] = cellAt(e)
-    void castSkill(r, c)
-  }
-  const onBoardHover = (e: React.MouseEvent) => {
-    if (!targeting) return
-    const [r, c] = cellAt(e)
-    if (!hover || hover[0] !== r || hover[1] !== c) setHover([r, c])
-  }
-
-  // 技能瞄準預覽
-  const preview = new Set<string>()
-  if (targeting && hover) {
-    const sk = s.skills[targeting]
-    if (sk)
-      for (const [r, c] of skillCells(s.board, targeting, sk.level, hover[0], hover[1])) preview.add(s.board[r][c]!.id)
   }
 
   return (
@@ -686,13 +601,8 @@ export function Game() {
             <Board
               board={s.board}
               clearing={clearing}
-              preview={preview}
               floats={floats}
               shake={shake}
-              targeting={!!targeting}
-              onClick={onBoardClick}
-              onMouseMove={onBoardHover}
-              onMouseLeave={() => setHover(null)}
               onPointerDown={onBoardPointerDown}
               onPointerUp={onBoardPointerUp}
             >
@@ -706,11 +616,7 @@ export function Game() {
                   {toast.text}
                 </div>
               )}
-              {stuck && !targeting && (
-                <div className="stuck-hint">
-                  {stuck === 'squeeze' ? '卡住了！往任一方向再推一次可以擠壓' : '卡住了！使用技能開路 👇'}
-                </div>
-              )}
+              {stuck && <div className="stuck-hint">卡住了！往任一方向再推一次可以擠壓</div>}
               {s.over && (
                 <GameOver
                   score={s.score}
@@ -728,19 +634,13 @@ export function Game() {
 
         <aside className="side side-play">
           <SwapMeter swaps={s.swaps} slidesToRecharge={s.slidesToRecharge} />
-          <SkillBar skills={s.skills} targeting={targeting} onToggle={toggleSkill} />
+          <SkillBar skills={s.skills} />
 
           <footer className="help">
             <p className="hint">
-              {targeting ? (
-                `點選棋盤施放 ${SKILLS[targeting].name}（Esc 取消）`
-              ) : (
-                <>
-                  滑動整盤，或推一張牌
-                  <wbr />
-                  換位湊牌型！
-                </>
-              )}
+              滑動整盤，或推一張牌
+              <wbr />
+              換位湊牌型！
             </p>
             <div className="rules">
               <div className="rule">
@@ -780,7 +680,7 @@ export function Game() {
               <span>🎨 同花</span>
             </p>
             <div className="keys">
-              <span className="keys-text">方向鍵推整盤，滑鼠拖牌換位，1–3 選技能</span>
+              <span className="keys-text">方向鍵推整盤，滑鼠拖牌換位</span>
               <InstallButton />
               <button className="btn ghost" onClick={restart}>
                 重新開始
