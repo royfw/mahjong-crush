@@ -11,7 +11,8 @@ export interface Tile {
 export type Cell = Tile | null
 export type Board = Cell[][]
 export type Direction = 'up' | 'down' | 'left' | 'right'
-export type MeldKind = 'pung' | 'chow' // 刻子 | 順子
+// 正規牌型：刻子 | 順子；寬鬆牌型（低分）：同號 | 雜順 | 跳號
+export type MeldKind = 'pung' | 'chow' | 'triplet' | 'mixedChow' | 'skip'
 
 export interface Match {
   kind: MeldKind
@@ -21,7 +22,14 @@ export interface Match {
 
 export const SIZE = 6
 export const SUITS: Suit[] = ['wan', 'tong', 'tiao']
-export const BASE_SCORE: Record<MeldKind, number> = { pung: 100, chow: 150 }
+export const BASE_SCORE: Record<MeldKind, number> = { pung: 100, chow: 150, triplet: 60, mixedChow: 50, skip: 40 }
+export const MELD_NAME: Record<MeldKind, string> = {
+  pung: '刻子',
+  chow: '順子',
+  triplet: '同號',
+  mixedChow: '雜順',
+  skip: '跳號',
+}
 export const OVERLAP_BONUS = 50
 export const INITIAL_TILES = 16
 export const SEED_TILES = 4
@@ -82,10 +90,13 @@ export function collapseBoard(board: Board, dir: Direction): Board {
 }
 
 function meldOf(a: Tile, b: Tile, c: Tile): MeldKind | null {
-  if (a.suit !== b.suit || b.suit !== c.suit) return null
-  if (a.value === b.value && b.value === c.value) return 'pung'
+  const sameSuit = a.suit === b.suit && b.suit === c.suit
   const v = [a.value, b.value, c.value].sort((x, y) => x - y)
-  if (v[1] === v[0] + 1 && v[2] === v[1] + 1) return 'chow'
+  const sameValue = v[0] === v[2]
+  const run = v[1] === v[0] + 1 && v[2] === v[1] + 1
+  if (sameValue) return sameSuit ? 'pung' : 'triplet' // 刻子 / 同號（同數字、花色不全相同）
+  if (run) return sameSuit ? 'chow' : 'mixedChow' // 順子 / 雜順（連號、花色不全相同）
+  if (sameSuit && v[1] === v[0] + 2 && v[2] === v[1] + 2) return 'skip' // 跳號：同花、差 2
   return null
 }
 
@@ -222,11 +233,36 @@ export function isFull(board: Board): boolean {
   return board.every((row) => row.every((t) => t !== null))
 }
 
-/** 沒有可消除牌型，且四個方向都推不動 → 卡死（扣血） */
+const DELTA: Record<Direction, [number, number]> = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }
+
+/** 把 (r, c) 的牌和 dir 方向的鄰牌交換；鄰格超出棋盤或是空格回 null */
+export function swapTiles(board: Board, r: number, c: number, dir: Direction): Board | null {
+  const [dr, dc] = DELTA[dir]
+  const r2 = r + dr
+  const c2 = c + dc
+  if (r2 < 0 || r2 >= SIZE || c2 < 0 || c2 >= SIZE || !board[r][c] || !board[r2][c2]) return null
+  const next = board.map((row) => row.slice())
+  ;[next[r][c], next[r2][c2]] = [next[r2][c2], next[r][c]]
+  return next
+}
+
+/** 交換後能形成牌型才回傳新盤面（Candy Crush 規則），否則 null */
+export function trySwap(board: Board, r: number, c: number, dir: Direction): Board | null {
+  const next = swapTiles(board, r, c, dir)
+  return next && findMatches(next).length ? next : null
+}
+
+function hasAnySwap(board: Board): boolean {
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++) if (trySwap(board, r, c, 'right') || trySwap(board, r, c, 'down')) return true
+  return false
+}
+
+/** 沒有可消除牌型、四個方向都推不動、也沒有能消除的換牌 → 卡死（扣血） */
 export function checkGameOver(board: Board): boolean {
   if (findMatches(board).length) return false
   const dirs: Direction[] = ['up', 'down', 'left', 'right']
-  return dirs.every((d) => !moveBoard(board, d).moved)
+  return dirs.every((d) => !moveBoard(board, d).moved) && !hasAnySwap(board)
 }
 
 /** 移除指定格子（技能 / 受傷用） */

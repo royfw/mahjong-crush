@@ -12,6 +12,8 @@ import {
   removeMatches,
   spawnTiles,
   streakMultiplier,
+  trySwap,
+  MELD_NAME,
   type Board as BoardData,
   type Direction,
 } from '../game/logic'
@@ -27,6 +29,8 @@ import {
   skillCells,
   type SkillId,
   type Skills,
+  SWAP_MAX,
+  SWAP_RECHARGE,
 } from '../game/skills'
 import { fx, isMuted, setMuted, unlockAudio } from '../game/feedback'
 import { Board, type FloatText } from './Board'
@@ -37,6 +41,7 @@ import { PlayerModal } from './PlayerModal'
 import { InstallButton, PwaPrompt } from './Pwa'
 import { ScoreBoard } from './ScoreBoard'
 import { SkillBar } from './SkillBar'
+import { SwapMeter } from './SwapMeter'
 import { StatusBar } from './StatusBar'
 import { MiniTile } from './Tile'
 import { usePlayer } from './usePlayer'
@@ -79,6 +84,8 @@ interface GameState {
   maxHp: number
   skills: Skills
   streak: number // 連續有消除的步數
+  swaps: number // 剩餘換牌次數
+  slidesToRecharge: number // 再推幾次整盤回 1 次換牌
   over: boolean
 }
 
@@ -94,6 +101,8 @@ function newGame(best: number): GameState {
     maxHp: BASE_HP,
     skills: {},
     streak: 0,
+    swaps: SWAP_MAX,
+    slidesToRecharge: SWAP_RECHARGE,
     over: false,
   }
 }
@@ -263,6 +272,7 @@ export function Game() {
     }
     st.level += 1
     st.levelStart = st.score
+    st.swaps = SWAP_MAX
     showToast(`LEVEL ${st.level}`)
     fx.levelUp()
     render()
@@ -275,18 +285,39 @@ export function Game() {
     void endTurn(() => gen === genRef.current)
   }
 
-  const handleMove = useCallback(async (dir: Direction) => {
+  /**
+   * 一步操作。from = 手指起點格：
+   *   先試「和 dir 方向的鄰牌交換」，能形成牌型就換（Candy Crush 式，消耗 1 次換牌）；
+   *   否則照舊整盤往 dir 推。
+   */
+  const handleMove = useCallback(async (dir: Direction, from?: [number, number]) => {
     if (busyRef.current || g.current.over || modalRef.current) return
     if (targetingRef.current) setTargeting(null)
     const gen = genRef.current
     const alive = () => gen === genRef.current
+    const st0 = g.current
 
-    const { board: moved, moved: ok } = moveBoard(g.current.board, dir)
-    if (!ok) {
+    let moved: BoardData | null = null
+    // 換牌消除後像 Candy Crush 一樣往下掉；推整盤則往推的方向靠攏
+    let collapseDir: Direction = dir
+    const swapped = from && st0.swaps > 0 ? trySwap(st0.board, from[0], from[1], dir) : null
+    if (swapped) {
+      moved = swapped
+      collapseDir = 'down'
+      st0.swaps -= 1
+    } else {
+      const m = moveBoard(st0.board, dir)
+      if (m.moved) moved = m.board
+    }
+    if (!moved) {
       fx.invalid()
       setShake(true)
       setTimeout(() => setShake(false), 200)
       return
+    }
+    if (!swapped && st0.swaps < SWAP_MAX && --st0.slidesToRecharge <= 0) {
+      st0.swaps += 1
+      st0.slidesToRecharge = SWAP_RECHARGE
     }
 
     fx.move()
@@ -319,9 +350,12 @@ export function Game() {
         const mult = streakMultiplier(g.current.streak)
         const pts = calculateScore(matches, chain) * mult
         const { board: removed, removedIds } = removeMatches(b, matches)
+        // 只有一種牌型時顯示名稱，讓玩家知道是什麼被消掉（寬鬆牌型尤其需要）
+        const kinds = new Set(matches.map((m) => m.kind))
+        const label = kinds.size === 1 ? `${MELD_NAME[matches[0].kind]} ` : ''
         addFloat(
           matches.flatMap((m) => m.cells),
-          `+${pts.toLocaleString()}${mult > 1 ? ` ×${mult}` : ''}`,
+          `${label}+${pts.toLocaleString()}${mult > 1 ? ` ×${mult}` : ''}`,
         )
         fx.clear(chain)
         setClearing(removedIds)
@@ -346,7 +380,7 @@ export function Game() {
         await sleep(CLEAR_MS)
         if (!alive()) return
         setClearing(new Set())
-        b = collapseBoard(removed, dir)
+        b = collapseBoard(removed, collapseDir)
         commit(b)
         await sleep(SLIDE_MS)
       }
@@ -356,7 +390,7 @@ export function Game() {
     if (!alive()) return
 
     const lc = levelConfig(g.current.level)
-    const count = 2 + (Math.random() < lc.thirdSpawnRate ? 1 : 0)
+    const count = 2 + (Math.random() < lc.thirdSpawnRate ? 1 : 0) + lc.extraSpawn
     b = spawnTiles(b, count, Math.random, lc.assistRate).board
     commit(b)
     await sleep(SPAWN_MS)
@@ -450,6 +484,16 @@ export function Game() {
   // 手機滑動（短距離視為點擊，交給 onClick）
   const touchStart = useRef<{ x: number; y: number } | null>(null)
   const lastSwipe = useRef(0)
+  /** 螢幕座標落在哪一格（棋盤外回 undefined） */
+  const cellFromPoint = (x: number, y: number): [number, number] | undefined => {
+    const el = document.querySelector('.board')
+    if (!el) return undefined
+    const rect = el.getBoundingClientRect()
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) return undefined
+    return [Math.floor(((y - rect.top) / rect.height) * SIZE), Math.floor(((x - rect.left) / rect.width) * SIZE)]
+  }
+  const swipeDir = (dx: number, dy: number): Direction =>
+    Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up'
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0]
     touchStart.current = { x: t.clientX, y: t.clientY }
@@ -463,7 +507,23 @@ export function Game() {
     const dy = t.clientY - st.y
     if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return
     lastSwipe.current = Date.now()
-    handleMove(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up')
+    handleMove(swipeDir(dx, dy), cellFromPoint(st.x, st.y))
+  }
+
+  // 桌機：滑鼠在牌上拖曳 = 推那張牌（觸控交給上面的 touch 事件）
+  const mouseStart = useRef<{ x: number; y: number } | null>(null)
+  const onBoardPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button === 0) mouseStart.current = { x: e.clientX, y: e.clientY }
+  }
+  const onBoardPointerUp = (e: React.PointerEvent) => {
+    const st = mouseStart.current
+    mouseStart.current = null
+    if (!st || e.pointerType !== 'mouse') return
+    const dx = e.clientX - st.x
+    const dy = e.clientY - st.y
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 16) return
+    lastSwipe.current = Date.now()
+    handleMove(swipeDir(dx, dy), cellFromPoint(st.x, st.y))
   }
 
   const cellAt = (e: React.MouseEvent): [number, number] => {
@@ -534,6 +594,8 @@ export function Game() {
               onClick={onBoardClick}
               onMouseMove={onBoardHover}
               onMouseLeave={() => setHover(null)}
+              onPointerDown={onBoardPointerDown}
+              onPointerUp={onBoardPointerUp}
             >
               {combo && !choices && (
                 <div key={combo.key} className="combo" onAnimationEnd={() => setCombo(null)}>
@@ -562,6 +624,7 @@ export function Game() {
         </main>
 
         <aside className="side side-play">
+          <SwapMeter swaps={s.swaps} slidesToRecharge={s.slidesToRecharge} />
           <SkillBar skills={s.skills} targeting={targeting} onToggle={toggleSkill} />
 
           <footer className="help">
@@ -570,9 +633,9 @@ export function Game() {
                 `點選棋盤施放 ${SKILLS[targeting].name}（Esc 取消）`
               ) : (
                 <>
-                  滑動牌面，
+                  滑動整盤，或推一張牌
                   <wbr />
-                  湊出順子或刻子！
+                  換位湊牌型！
                 </>
               )}
             </p>
@@ -598,8 +661,11 @@ export function Game() {
                 </span>
               </div>
             </div>
+            <p className="rules-loose">
+              不同花也能消：同號 <b>+60</b>　雜順 <b>+50</b>　跳號 <b>+40</b>
+            </p>
             <div className="keys">
-              <span className="keys-text">方向鍵 / WASD 移動，1–3 選技能</span>
+              <span className="keys-text">方向鍵推整盤，滑鼠拖牌換位，1–3 選技能</span>
               <InstallButton />
               <button className="btn ghost" onClick={restart}>
                 重新開始

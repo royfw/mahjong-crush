@@ -59,6 +59,10 @@ export const BASE_HP = 3
 export const SKILL_TILE_SCORE = 30
 export const DAMAGE_CLEAR = 10 // 卡死扣血時清掉的牌數
 
+// 換牌（Candy Crush 式）：次數有限，推整盤 SWAP_RECHARGE 次回 1 次，過關補滿
+export const SWAP_MAX = 3
+export const SWAP_RECHARGE = 5
+
 export interface SkillState {
   level: number
   charges: number
@@ -101,6 +105,7 @@ export interface LevelConfig {
   target: number // 本關需要取得的分數
   assistRate: number // 新牌協助湊牌機率
   thirdSpawnRate: number // 每步多生第 3 張的機率
+  extraSpawn: number // 每步額外多生的張數（後期加壓，避免換牌讓遊戲玩不完）
 }
 
 /** 難度曲線：第 1 關很簡單，之後逐關變難（有上下限） */
@@ -108,7 +113,8 @@ export function levelConfig(level: number): LevelConfig {
   const n = level - 1
   return {
     target: 500 + n * 400,
-    assistRate: Math.max(0.6, 0.92 - n * 0.05),
+    assistRate: Math.max(0.5, 0.75 - n * 0.05),
     thirdSpawnRate: Math.min(0.55, n * 0.12),
+    extraSpawn: Math.floor(n / 3),
   }
 }

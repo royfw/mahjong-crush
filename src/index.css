@@ -1284,6 +1284,42 @@ body {
   gap: 8px;
 }
 
+/* ── Swap meter / loose melds ───────── */
+.swapmeter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.swap-label {
+  font-weight: 700;
+}
+
+.swap-note {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.rules-loose {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rules-loose b {
+  color: var(--gold);
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+}
+
 /* ── PWA ────────────────────────────── */
 .pwa-banner {
   position: fixed;
@@ -1428,5 +1464,13 @@ body {
   .hint {
     margin: 0;
     font-size: 15px;
+  }
+}
+
+/* 矮的直式螢幕（小手機）：收起規則卡，把空間留給棋盤；提示文字保留 */
+@media (max-aspect-ratio: 1/1) and (max-height: 760px) {
+  .rules,
+  .rules-loose {
+    display: none;
   }
 }

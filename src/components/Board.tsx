@@ -20,6 +20,8 @@ interface Props {
   onClick: (e: React.MouseEvent) => void
   onMouseMove: (e: React.MouseEvent) => void
   onMouseLeave: () => void
+  onPointerDown: (e: React.PointerEvent) => void
+  onPointerUp: (e: React.PointerEvent) => void
 }
 
 export function Board({ board, clearing, preview, targeting, floats, shake, children, ...handlers }: Props) {
