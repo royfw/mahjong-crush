@@ -999,6 +999,33 @@ body {
   outline-offset: 2px;
 }
 
+.moves {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+}
+
+.moves b {
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--gold);
+}
+
+.moves.low {
+  border-color: var(--neon);
+  background: rgba(255, 61, 110, 0.18);
+  animation: bump 260ms ease-out;
+}
+
+.moves.low b {
+  color: #fff;
+}
+
 .streak {
   flex: none;
   padding: 3px 8px;
@@ -1662,6 +1689,7 @@ body {
 /* 矮的橫向螢幕（手機橫拿）：收掉次要資訊 */
 @media (min-aspect-ratio: 1/1) and (max-height: 520px) {
   .rules,
+  .rules-loose,
   .subtitle {
     display: none;
   }
@@ -1695,3 +1723,21 @@ body {
     display: none;
   }
 }
+
+/* 直式窄螢幕：狀態列放不下 LV / 步數 / 連消 / 進度條 / 血量，進度條改到第二行滿版 */
+@media (max-aspect-ratio: 1/1) and (max-width: 520px) {
+  .status {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .status .progress {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  .hearts {
+    margin-left: auto;
+  }
+}
+

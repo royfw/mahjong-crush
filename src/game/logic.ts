@@ -262,17 +262,18 @@ export function trySwap(board: Board, r: number, c: number, dir: Direction): Boa
   return next && findMatches(next).length ? next : null
 }
 
-function hasAnySwap(board: Board): boolean {
+export function hasAnySwap(board: Board): boolean {
   for (let r = 0; r < SIZE; r++)
     for (let c = 0; c < SIZE; c++) if (trySwap(board, r, c, 'right') || trySwap(board, r, c, 'down')) return true
   return false
 }
 
-/** 沒有可消除牌型、四個方向都推不動、也沒有能消除的換牌 → 卡死（扣血） */
-export function checkGameOver(board: Board): boolean {
+/** 沒有可消除牌型、四個方向都推不動、也沒有（有次數可用的）能消除換牌 → 卡死（扣血） */
+export function checkGameOver(board: Board, canSwap = true): boolean {
   if (findMatches(board).length) return false
   const dirs: Direction[] = ['up', 'down', 'left', 'right']
-  return dirs.every((d) => !moveBoard(board, d).moved) && !hasAnySwap(board)
+  // canSwap = 還有換牌次數；沒次數時「有能消的換牌」不算可行的走法（否則會永遠卡住、不扣血）
+  return dirs.every((d) => !moveBoard(board, d).moved) && !(canSwap && hasAnySwap(board))
 }
 
 /** 移除指定格子（技能 / 受傷用） */

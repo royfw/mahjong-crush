@@ -3,6 +3,7 @@ import {
   SIZE,
   calculateScore,
   checkGameOver,
+  hasAnySwap,
   collapseBoard,
   createInitialBoard,
   findMatches,
@@ -119,6 +120,7 @@ interface GameState {
   streak: number // 連續有消除的步數
   swaps: number // 剩餘換牌次數
   slidesToRecharge: number // 再推幾次整盤回 1 次換牌
+  movesLeft: number // 本關剩餘步數
   over: boolean
 }
 
@@ -136,6 +138,7 @@ function newGame(best: number): GameState {
     streak: 0,
     swaps: SWAP_MAX,
     slidesToRecharge: SWAP_RECHARGE,
+    movesLeft: levelConfig(1).moves,
     over: false,
   }
 }
@@ -155,7 +158,7 @@ export function Game() {
   const [hurt, setHurt] = useState(0)
   const [bump, setBump] = useState(0)
   const [choices, setChoices] = useState<SkillId[] | null>(null)
-  const [stuck, setStuck] = useState(false)
+  const [stuck, setStuck] = useState<'squeeze' | 'swap' | false>(false)
   const [muted, setMutedState] = useState(isMuted)
   const [modal, setModal] = useState<'welcome' | 'board' | 'news' | null>(null)
   const [result, setResult] = useState<{ rank: number; total: number } | 'queued' | null>(null)
@@ -272,11 +275,22 @@ export function Game() {
         return
       }
       levelUp(null)
+    } else if (st.movesLeft <= 0) {
+      // 步數用完還沒到目標：扣 1 顆心、本關重來（步數補滿、本關進度歸零，盤面保留）
+      if (loseHeart()) return
+      showToast('步數用完！−1 ❤ 本關重來', 'bad')
+      st.movesLeft = levelConfig(st.level).moves
+      st.levelStart = st.score
+      render()
     }
-    if (checkGameOver(st.board)) {
+    const canSlide = DIRS.some((d) => moveBoard(st.board, d).moved)
+    if (!canSlide && !findMatches(st.board).length && st.swaps > 0 && hasAnySwap(st.board)) {
+      // 推不動，但換牌可以開路：提示長按換牌（不然玩家只會一直滑、什麼都沒發生）
+      setStuck('swap')
+    } else if (checkGameOver(st.board, st.swaps > 0)) {
       const canSqueeze = st.swaps > 0 && DIRS.some((d) => squeezeCells(st.board, d))
       if (canSqueeze) {
-        setStuck(true)
+        setStuck('squeeze')
       } else {
         await takeDamage(alive)
         if (!alive()) return
@@ -285,22 +299,30 @@ export function Game() {
     busyRef.current = false
   }
 
-  const takeDamage = async (alive: () => boolean) => {
+  /** 扣 1 顆心；歸零就 GAME OVER 並送出分數。回傳是否已結束 */
+  const loseHeart = (): boolean => {
     const st = g.current
     st.hp -= 1
     setHurt((n) => n + 1)
     render()
-    if (st.hp <= 0) {
-      st.over = true
-      setResult(null)
-      fx.gameOver()
-      render()
-      void submitRef
-        .current(st.score, st.level)
-        .then((r) => r && setResult(r === 'queued' ? r : { rank: r.rank, total: r.total }))
-      return
+    if (st.hp > 0) {
+      fx.damage()
+      return false
     }
-    fx.damage()
+    st.over = true
+    busyRef.current = false
+    setResult(null)
+    fx.gameOver()
+    render()
+    void submitRef
+      .current(st.score, st.level)
+      .then((r) => r && setResult(r === 'queued' ? r : { rank: r.rank, total: r.total }))
+    return true
+  }
+
+  const takeDamage = async (alive: () => boolean) => {
+    const st = g.current
+    if (loseHeart()) return
     showToast('卡死！−1 ❤  破陣', 'bad')
     const cells = randomFilledCells(st.board, DAMAGE_CLEAR)
     const { board, removedIds } = removeCells(st.board, cells)
@@ -334,6 +356,7 @@ export function Game() {
     st.level += 1
     st.levelStart = st.score
     st.swaps = SWAP_MAX
+    st.movesLeft = levelConfig(st.level).moves
     showToast(`LEVEL ${st.level}`)
     fx.levelUp()
     render()
@@ -403,6 +426,7 @@ export function Game() {
         st0.slidesToRecharge = SWAP_RECHARGE
       }
     } else st0.swaps -= 1
+    st0.movesLeft -= 1
 
     busyRef.current = true
     setStuck(false)
@@ -646,6 +670,7 @@ export function Game() {
             maxHp={s.maxHp}
             hurtKey={hurt}
             streak={s.streak}
+            movesLeft={s.movesLeft}
           />
         </aside>
 
@@ -670,7 +695,11 @@ export function Game() {
                   {toast.text}
                 </div>
               )}
-              {stuck && <div className="stuck-hint">卡住了！往任一方向再推一次可以擠壓</div>}
+              {stuck && (
+                <div className="stuck-hint">
+                  {stuck === 'swap' ? '推不動了！長按一張牌再滑可以換位' : '卡住了！往任一方向再推一次可以擠壓'}
+                </div>
+              )}
               {s.over && (
                 <GameOver
                   score={s.score}

@@ -132,6 +132,7 @@ export function rollChoices(skills: Skills, rng: () => number = Math.random): Sk
 
 export interface LevelConfig {
   target: number // 本關需要取得的分數
+  moves: number // 本關可用步數；用完還沒到目標 → 扣 1 顆心、本關重來
   assistRate: number // 新牌協助湊牌機率
   thirdSpawnRate: number // 每步多生第 3 張的機率
   extraSpawn: number // 每步額外多生的張數（每 2 關 +1，後期加壓，避免特殊牌與換牌讓遊戲玩不完）
@@ -141,7 +142,10 @@ export interface LevelConfig {
 export function levelConfig(level: number): LevelConfig {
   const n = level - 1
   return {
-    target: 500 + n * 400,
+    // 目標每關再乘 1.08：連消倍率讓後期得分變快，線性目標會被追上；指數成長 + 步數上限保證一定會結束
+    target: Math.round(((500 + n * 400) * 1.08 ** n) / 10) * 10,
+    // 步數上限讓遊戲一定會結束（模擬：一般玩家約到第 8 關、會玩的約第 10 關，每局約 180–240 步）
+    moves: Math.max(15, 24 - Math.floor(n / 2)),
     assistRate: Math.max(0.5, 0.75 - n * 0.05),
     thirdSpawnRate: Math.min(0.55, n * 0.12),
     extraSpawn: Math.floor(n / 2),
