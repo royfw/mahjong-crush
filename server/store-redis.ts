@@ -1,12 +1,19 @@
 // 線上儲存：Upstash Redis（REST，適合 serverless）
-//   mc:p:{id}  hash   玩家資料
-//   mc:rank    zset   排名（score = rankScore，只放分數 > 0 的玩家）
-//   mc:rl:{k}  string 頻率限制計數
+//   {ns}p:{id}  hash   玩家資料
+//   {ns}rank    zset   排名（score = rankScore，只放分數 > 0 的玩家）
+//   {ns}rl:{k}  string 頻率限制計數
+// ns 依環境分開，預覽版與正式站共用同一個 Redis 也不會混在一起：
+//   production → "mc:"（維持原本的鍵，正式資料不搬動）
+//   preview    → "mc:preview:"
+//   其他 / 未設定 → "mc:dev:"（只有明確是 production 才寫正式資料）
 import { Redis } from '@upstash/redis'
 import { rankScore, type Player, type Store } from './core.js'
 
-const P = (id: string) => `mc:p:${id}`
-const RANK = 'mc:rank'
+export function namespaceFor(vercelEnv: string | undefined): string {
+  if (vercelEnv === 'production') return 'mc:'
+  if (vercelEnv === 'preview') return 'mc:preview:'
+  return 'mc:dev:'
+}
 
 /** Vercel 的 Upstash 整合依建立方式可能給 KV_* 或 UPSTASH_* 變數，兩種都接受 */
 export function redisFromEnv(env: Record<string, string | undefined> = process.env): Redis {
@@ -29,7 +36,9 @@ function toPlayer(h: Record<string, unknown> | null): Player | null {
   }
 }
 
-export function redisStore(redis: Redis): Store {
+export function redisStore(redis: Redis, ns = namespaceFor(process.env.VERCEL_ENV)): Store {
+  const P = (id: string) => `${ns}p:${id}`
+  const RANK = `${ns}rank`
   return {
     async get(id) {
       return toPlayer(await redis.hgetall<Record<string, unknown>>(P(id)))
@@ -63,7 +72,7 @@ export function redisStore(redis: Redis): Store {
       return redis.zcard(RANK)
     },
     async hit(key, windowSec) {
-      const k = `mc:rl:${key}`
+      const k = `${ns}rl:${key}`
       const tx = redis.multi()
       tx.incr(k)
       tx.expire(k, windowSec, 'NX')

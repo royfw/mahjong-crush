@@ -50,6 +50,7 @@ npm run build
 | 本機 `npm run dev` / `npm run preview` | Vite plugin（`server/leaderboard.ts`） | `data/players.json`（已 gitignore） |
 | Vercel | `api/handler.ts`（`vercel.json` 把 `/api/*` rewrite 過去） | Upstash Redis（`server/store-redis.ts`） |
 
+預覽版與正式站即使共用同一個 Redis，資料也會依 `VERCEL_ENV` 分開（正式 `mc:`、預覽 `mc:preview:`）。
 Vercel 需要在專案 **Storage** 加入 Upstash Redis，會自動注入 `KV_REST_API_URL` / `KV_REST_API_TOKEN`（`UPSTASH_REDIS_REST_*` 亦可）。
 沒有 API 時（例如純靜態部署）前端自動切換為離線模式，遊戲照常可玩。
 寫入操作有每 IP 每分鐘 30 次的頻率限制；分數只做範圍檢查，不防有心作弊。
