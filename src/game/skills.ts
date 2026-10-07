@@ -60,7 +60,7 @@ export const SKILL_TILE_SCORE = 30
 export const DAMAGE_CLEAR = 10 // 卡死扣血時清掉的牌數
 
 // 換牌（Candy Crush 式）：次數有限，推整盤 SWAP_RECHARGE 次回 1 次，過關補滿
-export const SWAP_MAX = 3
+export const SWAP_MAX = 4
 export const SWAP_RECHARGE = 5
 
 export interface SkillState {

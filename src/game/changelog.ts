@@ -1,21 +1,33 @@
 // 玩家看得到的「更新內容」：每次改版在最上面加一筆，用玩家的語言寫（不寫技術細節）
-// id 用來判斷玩家看過沒有，新增一筆就會在 📢 按鈕上出現紅點，並在更新後自動跳出一次
+// id 用來判斷玩家看過沒有：新增一筆就會在 📢 按鈕上出現紅點
+// gameplay: true（玩法有改變）→ 老玩家更新後自動跳出，並在最上面用 howTo 說明新的玩法；
+// 一般修正、文字調整不設 gameplay，只亮紅點、不打斷遊戲
 
 export interface ReleaseNote {
   id: string // 唯一識別，例如日期；同一天多次改版加 -2
   date: string
   title: string
   items: string[]
+  gameplay?: boolean // 玩法有改變：更新後自動跳出說明
+  howTo?: { icon: string; text: string }[] // 新玩法的簡短操作說明
 }
 
 export const CHANGELOG: ReleaseNote[] = [
   {
     id: '2026-10-07',
     date: '2026/10/07',
-    title: '特殊牌登場、推一張牌換位、不同花也能消',
+    title: '特殊牌登場、推一張牌換位、擠壓、不同花也能消',
+    gameplay: true,
+    howTo: [
+      { icon: '👆', text: '從一張牌往旁邊滑：和鄰牌換位能湊成牌型就會換' },
+      { icon: '🧱', text: '推不動時往同方向再推一次：每排最靠牆的牌被擠掉' },
+      { icon: '✨', text: '發光的特殊牌被消到會連帶爆開' },
+      { icon: '🀄', text: '不同花也能消：同號、雜順、跳號（分數較低）' },
+    ],
     items: [
       '手指從一張牌滑出去，和旁邊的牌交換後能湊成牌型就會換位消除；不能湊就照舊推整盤',
-      '換牌最多存 3 次，推整盤 5 次回 1 次，過關補滿',
+      '擠壓：牌推不動時往同方向再推一次，每一排滿的牌把最靠牆那張擠掉（每張 +10），卡住時也能用來脫困',
+      '換牌和擠壓共用次數，最多存 4 次，推整盤 5 次回 1 次，過關補滿',
       '不同花也能消，分數較低：同號（7萬 7筒 7條）+60、雜順（3萬 4筒 5條）+50、跳號（2條 4條 6條）+40',
       '牌面會出現發光的特殊牌，消到它會連帶觸發：➕ 多消 2 張、↔ 整列、↕ 整行、💥 九宮格、🎨 全盤同花色',
       '特殊牌炸到另一張特殊牌會接著引爆；交叉消除或 Combo ×2 以上一定會生一張特殊牌',
@@ -49,6 +61,15 @@ export const CHANGELOG: ReleaseNote[] = [
 
 const SEEN_KEY = 'mahjong-crush-seen-release'
 export const latestRelease = () => CHANGELOG[0].id
+
+/** 比 seen 新的版本（seen 不在清單裡就視為全部沒看過） */
+export function unseenReleases(seen: string | null): ReleaseNote[] {
+  const i = CHANGELOG.findIndex((n) => n.id === seen)
+  return i === -1 ? CHANGELOG : CHANGELOG.slice(0, i)
+}
+
+/** 沒看過的版本裡有沒有玩法改變 */
+export const hasGameplayChange = (seen: string | null) => unseenReleases(seen).some((n) => n.gameplay)
 
 export function getSeenRelease(): string | null {
   try {

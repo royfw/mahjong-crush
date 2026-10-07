@@ -12,6 +12,8 @@ import {
   spawnTiles,
   streakMultiplier,
   trySwap,
+  squeezeCells,
+  SQUEEZE_TILE_SCORE,
   expandRemoval,
   grantPower,
   countOverlaps,
@@ -43,7 +45,14 @@ import { LevelUp } from './LevelUp'
 import { PlayerBar } from './PlayerBar'
 import { PlayerModal } from './PlayerModal'
 import { NewsModal } from './NewsModal'
-import { getSeenRelease, latestRelease, markReleaseSeen } from '../game/changelog'
+import {
+  getSeenRelease,
+  hasGameplayChange,
+  latestRelease,
+  markReleaseSeen,
+  unseenReleases,
+  type ReleaseNote,
+} from '../game/changelog'
 import { InstallButton, PwaPrompt } from './Pwa'
 import { ScoreBoard } from './ScoreBoard'
 import { SkillBar } from './SkillBar'
@@ -70,6 +79,7 @@ const KEY_DIR: Record<string, Direction> = {
 }
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
+const DIRS: Direction[] = ['up', 'down', 'left', 'right']
 
 const POWER_ICON = { plus: '➕', row: '↔', col: '↕', blast: '💥', suit: '🎨' } as const
 const powerIcons = (hits: PowerHit[]) =>
@@ -143,7 +153,7 @@ export function Game() {
   const [targeting, setTargeting] = useState<SkillId | null>(null)
   const [hover, setHover] = useState<[number, number] | null>(null)
   const [choices, setChoices] = useState<SkillId[] | null>(null)
-  const [stuck, setStuck] = useState(false)
+  const [stuck, setStuck] = useState<'squeeze' | 'skill' | false>(false)
   const [muted, setMutedState] = useState(isMuted)
   const [modal, setModal] = useState<'welcome' | 'board' | 'news' | null>(null)
   const [result, setResult] = useState<{ rank: number; total: number } | 'queued' | null>(null)
@@ -156,9 +166,11 @@ export function Game() {
 
   // 更新內容：沒看過最新一筆就在 📢 顯示紅點
   const [hasNews, setHasNews] = useState(() => getSeenRelease() !== latestRelease())
+  const [gameplayNotes, setGameplayNotes] = useState<ReleaseNote[] | undefined>()
   const openNews = () => {
     markReleaseSeen()
     setHasNews(false)
+    setGameplayNotes(undefined)
     setModal('news')
   }
 
@@ -180,7 +192,9 @@ export function Game() {
       // 離線且從沒玩過：當新玩家處理，不跳更新內容
       markReleaseSeen()
       setHasNews(false)
-    } else if (seen !== latestRelease()) {
+    } else if (seen !== latestRelease() && hasGameplayChange(seen)) {
+      // 玩法有改變才自動跳出並說明新玩法；一般更新只亮 📢 紅點
+      setGameplayNotes(unseenReleases(seen).filter((n) => n.gameplay))
       markReleaseSeen()
       setHasNews(false)
       setModal('news')
@@ -226,7 +240,8 @@ export function Game() {
 
   const addFloat = (cells: [number, number][], text: string) => {
     const cx = cells.reduce((a, [, c]) => a + c + 0.5, 0) / cells.length / SIZE
-    const cy = cells.reduce((a, [r]) => a + r + 0.5, 0) / cells.length / SIZE
+    // 浮動文字會往上飄，最上排時往下移一點，避免飄出棋盤蓋到分數
+    const cy = Math.max(0.2, cells.reduce((a, [r]) => a + r + 0.5, 0) / cells.length / SIZE)
     const id = ++fxId.current
     setFloats((f) => [...f, { id, x: cx, y: cy, text }])
     setTimeout(() => setFloats((f) => f.filter((x) => x.id !== id)), 900)
@@ -261,8 +276,11 @@ export function Game() {
       levelUp(null)
     }
     if (checkGameOver(st.board)) {
-      if (hasCharges()) {
-        setStuck(true)
+      const canSqueeze = st.swaps > 0 && DIRS.some((d) => squeezeCells(st.board, d))
+      if (canSqueeze) {
+        setStuck('squeeze')
+      } else if (hasCharges()) {
+        setStuck('skill')
       } else {
         await takeDamage(alive)
         if (!alive()) return
@@ -340,33 +358,61 @@ export function Game() {
     const alive = () => gen === genRef.current
     const st0 = g.current
 
+    // 三種操作：swap 換牌（從牌上滑、能湊牌型）｜slide 推整盤｜squeeze 推不動時再推＝擠壓
     let moved: BoardData | null = null
-    // 換牌消除後像 Candy Crush 一樣往下掉；推整盤則往推的方向靠攏
+    let kind: 'swap' | 'slide' | 'squeeze' = 'slide'
+    // 換牌消除後像 Candy Crush 一樣往下掉；推整盤 / 擠壓則往推的方向靠攏
     let collapseDir: Direction = dir
+    let squeeze: ReturnType<typeof expandRemoval> | null = null
+    let squeezed = 0
     const swapped = from && st0.swaps > 0 ? trySwap(st0.board, from[0], from[1], dir) : null
     if (swapped) {
       moved = swapped
+      kind = 'swap'
       collapseDir = 'down'
-      st0.swaps -= 1
     } else {
       const m = moveBoard(st0.board, dir)
       if (m.moved) moved = m.board
+      else if (st0.swaps > 0) {
+        // 擠壓：每一排滿的牌把最靠牆那張擠掉（被擠到的特殊牌照樣觸發）
+        const sc = squeezeCells(st0.board, dir)
+        if (sc) {
+          kind = 'squeeze'
+          squeeze = expandRemoval(st0.board, sc)
+          squeezed = sc.length
+        }
+      }
     }
-    if (!moved) {
+    if (!moved && !squeeze) {
       fx.invalid()
       setShake(true)
       setTimeout(() => setShake(false), 200)
       return
     }
-    if (!swapped && st0.swaps < SWAP_MAX && --st0.slidesToRecharge <= 0) {
-      st0.swaps += 1
-      st0.slidesToRecharge = SWAP_RECHARGE
-    }
+    if (kind === 'slide') {
+      if (st0.swaps < SWAP_MAX && --st0.slidesToRecharge <= 0) {
+        st0.swaps += 1
+        st0.slidesToRecharge = SWAP_RECHARGE
+      }
+    } else st0.swaps -= 1
 
-    fx.move()
     busyRef.current = true
     setStuck(false)
-    let b = moved
+    if (squeeze) {
+      const { cells, extra, hits } = squeeze
+      const { board: removed, removedIds } = removeCells(st0.board, cells)
+      const pts = squeezed * SQUEEZE_TILE_SCORE + extra * POWER_TILE_SCORE
+      addFloat(cells, `${powerIcons(hits)}擠壓 +${pts}`)
+      if (hits.length) playHits(hits, 1)
+      else fx.sweep()
+      setClearing(removedIds)
+      addScore(pts)
+      await sleep(CLEAR_MS)
+      if (!alive()) return
+      setClearing(new Set())
+      moved = collapseBoard(removed, dir)
+    } else fx.move()
+    let b = moved!
     let chain = 0
     let bonusGiven = false
     let cleared = false
@@ -660,7 +706,11 @@ export function Game() {
                   {toast.text}
                 </div>
               )}
-              {stuck && !targeting && <div className="stuck-hint">卡住了！使用技能開路 👇</div>}
+              {stuck && !targeting && (
+                <div className="stuck-hint">
+                  {stuck === 'squeeze' ? '卡住了！往任一方向再推一次可以擠壓' : '卡住了！使用技能開路 👇'}
+                </div>
+              )}
               {s.over && (
                 <GameOver
                   score={s.score}
@@ -741,7 +791,7 @@ export function Game() {
       </div>
       {choices && <LevelUp level={s.level} choices={choices} skills={s.skills} onPick={pickSkill} />}
       <PwaPrompt />
-      {modal === 'news' && <NewsModal onClose={() => setModal(null)} />}
+      {modal === 'news' && <NewsModal gameplayNotes={gameplayNotes} onClose={() => setModal(null)} />}
       {(modal === 'welcome' || modal === 'board') && (
         <PlayerModal key={modal + player.fp} p={player} mode={modal} onClose={() => setModal(null)} />
       )}

@@ -1461,6 +1461,33 @@ body {
   color: var(--muted);
 }
 
+.howto {
+  margin: 0;
+  padding: 12px 14px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 12px;
+  background: rgba(62, 240, 176, 0.08);
+  border: 1px solid var(--jade);
+}
+
+.howto li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.howto-icon {
+  flex: none;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
 /* ── PWA ────────────────────────────── */
 .pwa-banner {
   position: fixed;

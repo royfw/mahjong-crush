@@ -1,11 +1,14 @@
-import { CHANGELOG } from '../game/changelog'
+import { CHANGELOG, type ReleaseNote } from '../game/changelog'
 
 interface Props {
   onClose: () => void
+  /** 更新後自動跳出時：有玩法改變的新版本，在最上面說明新玩法 */
+  gameplayNotes?: ReleaseNote[]
 }
 
 /** 更新內容：最新的在最上面 */
-export function NewsModal({ onClose }: Props) {
+export function NewsModal({ onClose, gameplayNotes }: Props) {
+  const howTo = (gameplayNotes ?? []).flatMap((n) => n.howTo ?? [])
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide news" role="dialog" aria-labelledby="news-title">
@@ -13,8 +16,18 @@ export function NewsModal({ onClose }: Props) {
           ✕
         </button>
         <div id="news-title" className="modal-title">
-          更新內容
+          {howTo.length ? '玩法有更新' : '更新內容'}
         </div>
+        {howTo.length > 0 && (
+          <ul className="howto">
+            {howTo.map((h) => (
+              <li key={h.text}>
+                <span className="howto-icon">{h.icon}</span>
+                <span>{h.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         {CHANGELOG.map((note, i) => (
           <section key={note.id} className={`release${i === 0 ? ' latest' : ''}`}>
             <div className="release-head">

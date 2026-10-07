@@ -397,3 +397,17 @@ export function grantPower(board: Board, near: [number, number], rng: Rng = Math
   next[r][c] = { ...next[r][c]!, power: rollPower(EARNED_POWER_WEIGHTS, rng) } // 保留 id：牌不重新掛載，只長出角標
   return next
 }
+
+// ── 擠壓 ─────────────────────────────────────────────
+
+export const SQUEEZE_TILE_SCORE = 10 // 被擠掉的每張牌分數
+
+/**
+ * 擠壓：往 dir 推不動時再推一次，每一排滿的牌把最靠牆那張擠掉。
+ * 回傳被擠掉的格子；沒有任何一排是滿的回 null。
+ */
+export function squeezeCells(board: Board, dir: Direction): [number, number][] | null {
+  const out: [number, number][] = []
+  for (const line of lines(dir)) if (line.every(([r, c]) => board[r][c])) out.push(line[0])
+  return out.length ? out : null
+}
