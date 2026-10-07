@@ -38,6 +38,8 @@ import { GameOver } from './GameOver'
 import { LevelUp } from './LevelUp'
 import { PlayerBar } from './PlayerBar'
 import { PlayerModal } from './PlayerModal'
+import { NewsModal } from './NewsModal'
+import { getSeenRelease, latestRelease, markReleaseSeen } from '../game/changelog'
 import { InstallButton, PwaPrompt } from './Pwa'
 import { ScoreBoard } from './ScoreBoard'
 import { SkillBar } from './SkillBar'
@@ -126,7 +128,7 @@ export function Game() {
   const [choices, setChoices] = useState<SkillId[] | null>(null)
   const [stuck, setStuck] = useState(false)
   const [muted, setMutedState] = useState(isMuted)
-  const [modal, setModal] = useState<'welcome' | 'board' | null>(null)
+  const [modal, setModal] = useState<'welcome' | 'board' | 'news' | null>(null)
   const [result, setResult] = useState<{ rank: number; total: number } | 'queued' | null>(null)
 
   const player = usePlayer()
@@ -135,14 +137,38 @@ export function Game() {
   const modalRef = useRef(modal)
   modalRef.current = modal
 
-  // 第一次遇到新玩家：跳出取暱稱畫面
+  // 更新內容：沒看過最新一筆就在 📢 顯示紅點
+  const [hasNews, setHasNews] = useState(() => getSeenRelease() !== latestRelease())
+  const openNews = () => {
+    markReleaseSeen()
+    setHasNews(false)
+    setModal('news')
+  }
+
+  // 第一次遇到新玩家：跳出取暱稱畫面（新玩家不需要看更新內容，直接記為已看過）
+  // 老玩家更新到新版後：自動跳出一次更新內容
   const welcomed = useRef(false)
   useEffect(() => {
-    if (player.status === 'new' && !welcomed.current) {
-      welcomed.current = true
+    if (welcomed.current || player.status === 'loading') return
+    welcomed.current = true
+    const seen = getSeenRelease()
+    if (player.status === 'new') {
+      // 真正第一次來：記為已看過；沒登入的老玩家：保留紅點，讓他自己點來看
+      if (seen === null) {
+        markReleaseSeen()
+        setHasNews(false)
+      }
       setModal('welcome')
+    } else if (seen === null && !player.player) {
+      // 離線且從沒玩過：當新玩家處理，不跳更新內容
+      markReleaseSeen()
+      setHasNews(false)
+    } else if (seen !== latestRelease()) {
+      markReleaseSeen()
+      setHasNews(false)
+      setModal('news')
     }
-  }, [player.status])
+  }, [player.status, player.player])
 
   // 手機：整個畫面都能滑動操作，禁止頁面捲動 / 下拉重新整理（iOS 不完全遵守 touch-action，需要 preventDefault）
   // 彈窗內（排行榜列表、輸入框）仍可正常捲動
@@ -562,6 +588,8 @@ export function Game() {
               setMutedState(!muted)
             }}
             onOpenBoard={() => setModal('board')}
+            hasNews={hasNews}
+            onOpenNews={openNews}
           />
           <header className="header">
             <div className="brand">
@@ -676,7 +704,10 @@ export function Game() {
       </div>
       {choices && <LevelUp level={s.level} choices={choices} skills={s.skills} onPick={pickSkill} />}
       <PwaPrompt />
-      {modal && <PlayerModal key={modal + player.fp} p={player} mode={modal} onClose={() => setModal(null)} />}
+      {modal === 'news' && <NewsModal onClose={() => setModal(null)} />}
+      {(modal === 'welcome' || modal === 'board') && (
+        <PlayerModal key={modal + player.fp} p={player} mode={modal} onClose={() => setModal(null)} />
+      )}
     </>
   )
 }

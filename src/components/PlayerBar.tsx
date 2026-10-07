@@ -5,9 +5,11 @@ interface Props {
   muted: boolean
   onToggleMute: () => void
   onOpenBoard: () => void
+  hasNews: boolean
+  onOpenNews: () => void
 }
 
-export function PlayerBar({ p, muted, onToggleMute, onOpenBoard }: Props) {
+export function PlayerBar({ p, muted, onToggleMute, onOpenBoard, hasNews, onOpenNews }: Props) {
   return (
     <div className="playerbar">
       <button className="player-chip" onClick={onOpenBoard} disabled={p.status === 'offline'}>
@@ -21,6 +23,14 @@ export function PlayerBar({ p, muted, onToggleMute, onOpenBoard }: Props) {
       </button>
       <button className="icon-btn" onClick={onOpenBoard} disabled={p.status === 'offline'} aria-label="排行榜">
         🏆
+      </button>
+      <button
+        className="icon-btn news-btn"
+        onClick={onOpenNews}
+        aria-label={hasNews ? '更新內容（有新內容）' : '更新內容'}
+      >
+        📢
+        {hasNews && <span className="news-dot" />}
       </button>
       <button className="icon-btn" onClick={onToggleMute} aria-label={muted ? '開啟音效與震動' : '關閉音效與震動'}>
         {muted ? '🔇' : '🔊'}

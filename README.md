@@ -63,6 +63,11 @@ Vercel 需要在專案 **Storage** 加入 Upstash Redis，會自動注入 `KV_RE
 | POST | `/api/score` | `{ id, score, level }` 提交分數（只保留最高） |
 | GET | `/api/leaderboard?id=` | 前 20 名 + 自己的名次 |
 
+## 給玩家的更新內容
+
+每次改版在 `src/game/changelog.ts` 最上面加一筆（玩家看得懂的白話，不寫技術細節）。
+玩家更新到新版後會自動跳出一次，右上角 📢 也隨時可以查看。這份和下面的 changeset 開發紀錄分開維護。
+
 ## 開發紀錄
 
 使用 [Changesets](https://github.com/changesets/changesets)：改動時新增 `.changeset/*.md`，發版執行 `npm run version`。
